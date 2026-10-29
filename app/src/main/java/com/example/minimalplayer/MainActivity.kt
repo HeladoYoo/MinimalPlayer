@@ -3,7 +3,9 @@ package com.example.minimalplayer
 import android.Manifest
 import android.app.Activity
 import android.content.ContentUris
+import android.content.Context
 import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -12,6 +14,7 @@ import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Size
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
@@ -39,9 +42,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -57,20 +63,9 @@ import kotlin.math.abs
 
 class MainActivity : ComponentActivity() {
 
-    private val requestPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { _ -> }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            arrayOf(Manifest.permission.READ_MEDIA_VIDEO)
-        } else {
-            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
-        }
-        requestPermissionLauncher.launch(permissions)
-
         setContent {
             MinimalPlayerTheme {
                 MainAppNavigator()
@@ -80,7 +75,7 @@ class MainActivity : ComponentActivity() {
 }
 
 enum class Screen {
-    Home, VideoList, Player
+    PermissionRequest, Home, VideoList, Player
 }
 
 @Composable
@@ -88,9 +83,23 @@ fun MinimalPlayerTheme(content: @Composable () -> Unit) {
     MaterialTheme(content = content)
 }
 
+// 检查是否已经授予了视频权限
+fun hasVideoPermission(context: Context): Boolean {
+    val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        Manifest.permission.READ_MEDIA_VIDEO
+    } else {
+        Manifest.permission.READ_EXTERNAL_STORAGE
+    }
+    return ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+}
+
 @Composable
 fun MainAppNavigator() {
-    var currentScreen by rememberSaveable { mutableStateOf(Screen.Home) }
+    val context = LocalContext.current
+    // 如果已有权限直接进 Home，否则展示权限请求引导页
+    var currentScreen by rememberSaveable { 
+        mutableStateOf(if (hasVideoPermission(context)) Screen.Home else Screen.PermissionRequest) 
+    }
     var currentVideoUri by rememberSaveable { mutableStateOf("") }
 
     val meshBackgroundBrush = Brush.radialGradient(
@@ -110,6 +119,9 @@ fun MainAppNavigator() {
             .padding(if (currentScreen == Screen.Player) 0.dp else 16.dp)
     ) {
         when (currentScreen) {
+            Screen.PermissionRequest -> PermissionRequestScreen(
+                onGrantedOrSkipped = { currentScreen = Screen.Home }
+            )
             Screen.Home -> ModernHomeScreen(
                 onCardClick = { currentScreen = Screen.VideoList }
             )
@@ -124,6 +136,102 @@ fun MainAppNavigator() {
                 videoUri = currentVideoUri,
                 onBackClick = { currentScreen = Screen.VideoList }
             )
+        }
+    }
+}
+
+// ✨ 独立权限引导页面（模仿截图风格）
+@Composable
+fun PermissionRequestScreen(onGrantedOrSkipped: () -> Unit) {
+    val context = LocalContext.current
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ ->
+        // 无论用户点允许还是拒绝，都可以进入软件
+        onGrantedOrSkipped()
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.White)
+            .statusBarsPadding()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Spacer(modifier = Modifier.height(20.dp))
+
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = "MinimalPlayer",
+                fontSize = 26.sp,
+                color = Color(0xFF1D1B20),
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(70.dp))
+
+            // 图标占位盒子
+            Box(
+                modifier = Modifier
+                    .size(110.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color(0xFFF0F2F5)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = "📁", fontSize = 42.sp)
+            }
+
+            Spacer(modifier = Modifier.height(30.dp))
+
+            Text(
+                text = "查找您的视频",
+                fontSize = 22.sp,
+                color = Color(0xFF1D1B20),
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "Android 限制应用访问和管理文件的方式。“文件访问权限”可帮助 MinimalPlayer 查找您手机不同文件夹中的本地视频文件。",
+                fontSize = 13.sp,
+                color = Color.Gray,
+                textAlign = TextAlign.Center,
+                lineHeight = 20.sp
+            )
+        }
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Button(
+                onClick = {
+                    val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        Manifest.permission.READ_MEDIA_VIDEO
+                    } else {
+                        Manifest.permission.READ_EXTERNAL_STORAGE
+                    }
+                    permissionLauncher.launch(permission)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+                shape = RoundedCornerShape(25.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6))
+            ) {
+                Text(text = "允许访问视频文件", color = Color.White, fontSize = 15.sp)
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            TextButton(onClick = onGrantedOrSkipped) {
+                Text(text = "仅使用基础功能继续", color = Color.Gray, fontSize = 13.sp)
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
@@ -203,6 +311,9 @@ fun VideoListScreen(onBackClick: () -> Unit, onVideoClick: (String) -> Unit) {
     var videoList by remember { mutableStateOf(listOf<VideoItem>()) }
 
     LaunchedEffect(Unit) {
+        // 如果没有权限，直接跳过查询，返回空列表
+        if (!hasVideoPermission(context)) return@LaunchedEffect
+
         val list = mutableListOf<VideoItem>()
         val projection = arrayOf(
             MediaStore.Video.Media._ID,
@@ -259,13 +370,24 @@ fun VideoListScreen(onBackClick: () -> Unit, onVideoClick: (String) -> Unit) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        if (videoList.isEmpty()) {
+        if (!hasVideoPermission(context)) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "未找到视频，请检查是否已授予存储/媒体权限",
+                    text = "您未授予文件访问权限，无法加载本地视频",
+                    color = Color.Gray,
+                    fontSize = 14.sp
+                )
+            }
+        } else if (videoList.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "未在手机中找到视频文件",
                     color = Color.Gray,
                     fontSize = 14.sp
                 )
@@ -285,13 +407,11 @@ fun VideoListScreen(onBackClick: () -> Unit, onVideoClick: (String) -> Unit) {
     }
 }
 
-// ✨ 带有异步加载真实视频帧封面的网格卡片
 @Composable
 fun VideoCardItem(video: VideoItem, onClick: () -> Unit) {
     val context = LocalContext.current
     var thumbnailBitmap by remember { mutableStateOf<Bitmap?>(null) }
 
-    // 在后台异步提取视频帧，避免卡顿
     LaunchedEffect(video.uri) {
         withContext(Dispatchers.IO) {
             try {
@@ -333,7 +453,6 @@ fun VideoCardItem(video: VideoItem, onClick: () -> Unit) {
         Column(
             modifier = Modifier.fillMaxWidth()
         ) {
-            // 封面图区域
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -353,7 +472,6 @@ fun VideoCardItem(video: VideoItem, onClick: () -> Unit) {
                     Text(text = "加载中...", fontSize = 11.sp, color = Color.Gray)
                 }
 
-                // 右下角显示视频时长
                 val min = video.duration / 1000 / 60
                 val sec = (video.duration / 1000) % 60
                 val durationText = String.format("%02d:%02d", min, sec)
@@ -372,7 +490,6 @@ fun VideoCardItem(video: VideoItem, onClick: () -> Unit) {
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // 视频标题
             Text(
                 text = video.name,
                 fontSize = 13.sp,
