@@ -1,7 +1,9 @@
 package com.example.minimalplayer
 
 import android.Manifest
+import android.app.Activity
 import android.content.ContentUris
+import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -33,6 +35,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -285,10 +290,33 @@ fun VideoListScreen(onBackClick: () -> Unit, onVideoClick: (String) -> Unit) {
     }
 }
 
+// 完美沉浸式横屏全屏播放页面
 @Composable
 fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
     val context = LocalContext.current
-    
+    val activity = context as? Activity
+
+    // 1. 进入播放页时：强制切换为横屏，并隐藏系统状态栏与导航栏实现全屏沉浸
+    DisposableEffect(Unit) {
+        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        
+        val window = activity?.window
+        if (window != null) {
+            val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
+            windowInsetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
+        }
+
+        onDispose {
+            // 2. 离开播放页时：恢复竖屏，并显示系统栏
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            if (window != null) {
+                val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
+                windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
+
     var isSpeedingUp by remember { mutableStateOf(false) }
     var showSpeedTip by remember { mutableStateOf(false) }
 
@@ -301,7 +329,7 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
         }
     }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(exoPlayer) {
         onDispose {
             exoPlayer.release()
         }
@@ -336,6 +364,7 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                 )
             }
     ) {
+        // 视频视图，填满全屏
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
@@ -347,9 +376,9 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
             modifier = Modifier.fillMaxSize()
         )
 
+        // 返回按钮
         Row(
             modifier = Modifier
-                .statusBarsPadding()
                 .padding(16.dp)
                 .align(Alignment.TopStart),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -366,6 +395,7 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
             }
         }
 
+        // 右侧半屏长按 2 倍速
         Box(
             modifier = Modifier
                 .fillMaxHeight()
@@ -391,6 +421,7 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                 }
         )
 
+        // 提示浮层
         if (showSpeedTip || showSlideTip) {
             Box(
                 modifier = Modifier
