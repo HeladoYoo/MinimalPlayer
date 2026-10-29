@@ -55,6 +55,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        supportActionBar?.hide() // 隐藏默认标题栏
         
         val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             arrayOf(Manifest.permission.READ_MEDIA_VIDEO)
@@ -82,7 +83,6 @@ fun MinimalPlayerTheme(content: @Composable () -> Unit) {
 
 @Composable
 fun MainAppNavigator() {
-    // 使用 rememberSaveable 防止屏幕旋转或配置改变时状态丢失
     var currentScreen by rememberSaveable { mutableStateOf(Screen.Home) }
     var currentVideoUri by rememberSaveable { mutableStateOf("") }
 
@@ -100,7 +100,7 @@ fun MainAppNavigator() {
         modifier = Modifier
             .fillMaxSize()
             .background(meshBackgroundBrush)
-            .padding(16.dp)
+            .padding(if (currentScreen == Screen.Player) 0.dp else 16.dp)
     ) {
         when (currentScreen) {
             Screen.Home -> ModernHomeScreen(
@@ -299,7 +299,7 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
     val context = LocalContext.current
     val activity = context as? Activity
 
-    // 1. 强制横屏与沉浸式全屏
+    // 强制横屏与沉浸式全屏
     DisposableEffect(Unit) {
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         
@@ -356,7 +356,7 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(Color.Black) // 背景设为纯黑，保证黑边质感
             .pointerInput(Unit) {
                 detectHorizontalDragGestures(
                     onDragEnd = {
@@ -379,17 +379,19 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                 )
             }
     ) {
+        // 核心修改：将 RESIZE_MODE_ZOOM 改为 RESIZE_MODE_FIT，自动添加黑边
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     player = exoPlayer
                     useController = true
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT 
                 }
             },
             modifier = Modifier.fillMaxSize()
         )
 
+        // 返回按钮
         Row(
             modifier = Modifier
                 .padding(16.dp)
@@ -408,6 +410,7 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
             }
         }
 
+        // 右侧半屏长按 2 倍速触发层
         Box(
             modifier = Modifier
                 .fillMaxHeight()
@@ -433,6 +436,7 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                 }
         )
 
+        // 提示或错误浮层
         if (showSpeedTip || showSlideTip || errorMessage != null) {
             Box(
                 modifier = Modifier
