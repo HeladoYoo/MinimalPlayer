@@ -1,4 +1,4 @@
-package com.example.minimalplayer // 请保留你原本的项目包名
+package com.example.minimalplayer
 
 import android.Manifest
 import android.content.ContentUris
@@ -43,7 +43,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // 动态请求视频读取权限
         val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             arrayOf(Manifest.permission.READ_MEDIA_VIDEO)
         } else {
@@ -59,9 +58,13 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// 页面导航状态增加 Player（播放页）
 enum class Screen {
     Home, VideoList, Player
+}
+
+@Composable
+fun MinimalPlayerTheme(content: @Composable () -> Unit) {
+    MaterialTheme(content = content)
 }
 
 @Composable
@@ -71,9 +74,9 @@ fun MainAppNavigator() {
 
     val meshBackgroundBrush = Brush.radialGradient(
         colors = listOf(
-            Color(0xFFFFC0CB), // 浅粉色
-            Color(0xFFFFDAB9), // 柔橙色
-            Color(0xFFE0ECFF)  // 淡蓝色
+            Color(0xFFFFC0CB),
+            Color(0xFFFFDAB9),
+            Color(0xFFE0ECFF)
         ),
         center = Offset(300f, 400f),
         radius = 1600f
@@ -150,4 +153,176 @@ fun GlassCard(title: String, subtitle: String, count: String, onClick: () -> Uni
                 width = 1.dp,
                 brush = Brush.verticalGradient(
                     colors = listOf(
-              
+                        Color.White.copy(alpha = 0.8f),
+                        Color.White.copy(alpha = 0.2f)
+                    )
+                ),
+                shape = RoundedCornerShape(24.dp)
+            )
+            .clickable { onClick() }
+            .padding(16.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column {
+                Text(text = title, fontSize = 17.sp, color = Color.Black)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(text = subtitle, fontSize = 11.sp, color = Color.DarkGray)
+            }
+            Text(text = count, fontSize = 11.sp, color = Color.Gray)
+        }
+    }
+}
+
+@Composable
+fun VideoListScreen(onBackClick: () -> Unit, onVideoClick: (String) -> Unit) {
+    val context = LocalContext.current
+    var videoList by remember { mutableStateOf(listOf<VideoItem>()) }
+
+    LaunchedEffect(Unit) {
+        val list = mutableListOf<VideoItem>()
+        val projection = arrayOf(
+            MediaStore.Video.Media._ID,
+            MediaStore.Video.Media.DISPLAY_NAME,
+            MediaStore.Video.Media.DURATION
+        )
+        
+        val cursor = context.contentResolver.query(
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+            projection,
+            null,
+            null,
+            "${MediaStore.Video.Media.DATE_ADDED} DESC"
+        )
+
+        cursor?.use {
+            val idColumn = it.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
+            val nameColumn = it.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
+            val durationColumn = it.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
+
+            while (it.moveToNext()) {
+                val id = it.getLong(idColumn)
+                val name = it.getString(nameColumn) ?: "未知视频"
+                val duration = it.getLong(durationColumn)
+                
+                val contentUri = ContentUris.withAppendedId(
+                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id
+                )
+                
+                list.add(VideoItem(name, contentUri.toString(), duration))
+            }
+        }
+        videoList = list
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "本地视频库", fontSize = 22.sp, color = Color.Black)
+            Button(
+                onClick = onBackClick,
+                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.6f))
+            ) {
+                Text(text = "返回", color = Color.Black)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (videoList.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "未找到视频，请检查是否已授予存储/媒体权限",
+                    color = Color.Gray,
+                    fontSize = 14.sp
+                )
+            }
+        } else {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(videoList) { video ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color.White.copy(alpha = 0.45f))
+                            .clickable {
+                                onVideoClick(video.uri)
+                            }
+                            .padding(16.dp)
+                    ) {
+                        Column {
+                            Text(text = video.name, fontSize = 15.sp, color = Color.Black)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "时长: ${video.duration / 1000 / 60} 分钟 | 点击内置播放", 
+                                fontSize = 11.sp, 
+                                color = Color.DarkGray
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
+    val context = LocalContext.current
+
+    val exoPlayer = remember {
+        ExoPlayer.Builder(context).build().apply {
+            val mediaItem = MediaItem.fromUri(Uri.parse(videoUri))
+            setMediaItem(mediaItem)
+            prepare()
+            playWhenReady = true
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            exoPlayer.release()
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        AndroidView(
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    player = exoPlayer
+                    useController = true
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+
+        Button(
+            onClick = {
+                exoPlayer.release()
+                onBackClick()
+            },
+            modifier = Modifier
+                .statusBarsPadding()
+                .padding(16.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color.Black.copy(alpha = 0.5f))
+        ) {
+            Text(text = "返回", color = Color.White)
+        }
+    }
+}
+
+data class VideoItem(val name: String, val uri: String, val duration: Long)
