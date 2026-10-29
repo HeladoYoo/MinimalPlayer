@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.awaitFirstDown
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -293,6 +294,20 @@ fun VideoListScreen(onBackClick: () -> Unit, onVideoClick: (String) -> Unit) {
     }
 }
 
+// 格式化毫秒为 mm:ss 或 hh:mm:ss
+fun formatDuration(ms: Long): String {
+    if (ms <= 0) return "00:00"
+    val totalSeconds = ms / 1000
+    val seconds = totalSeconds % 60
+    val minutes = (totalSeconds / 60) % 60
+    val hours = totalSeconds / 3600
+    return if (hours > 0) {
+        String.format("%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format("%02d:%02d", minutes, seconds)
+    }
+}
+
 @Composable
 fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
     val context = LocalContext.current
@@ -349,13 +364,14 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
         }
     }
 
-    var slideDirectionText by remember { mutableStateOf("") }
+    var slideTipText by remember { mutableStateOf("") }
+    var targetTimeText by remember { mutableStateOf("") }
     var showSlideTip by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black) // 纯黑背景，确保自适应黑边质感
+            .background(Color.Black)
             .pointerInput(Unit) {
                 detectHorizontalDragGestures(
                     onDragEnd = {
@@ -364,21 +380,23 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                     onHorizontalDrag = { _, dragAmount ->
                         if (abs(dragAmount) > 2f) {
                             val currentPosition = exoPlayer.currentPosition
+                            val duration = exoPlayer.duration.coerceAtLeast(1L)
                             val seekOffset = (dragAmount * 15).toLong() 
-                            var targetPosition = currentPosition + seekOffset
-                            if (targetPosition < 0) targetPosition = 0
-                            if (targetPosition > exoPlayer.duration) targetPosition = exoPlayer.duration
+                            var targetPosition = (currentPosition + seekOffset).coerceIn(0L, duration)
                             
                             exoPlayer.seekTo(targetPosition)
                             
-                            slideDirectionText = if (dragAmount > 0) "快进 ⏩" else "快退 ⏪"
+                            val offsetSec = seekOffset / 1000
+                            val sign = if (offsetSec >= 0) "+" else ""
+                            slideTipText = if (dragAmount > 0) "快进 ⏩ (${sign}${offsetSec}s)" else "快退 ⏪ (${offsetSec}s)"
+                            targetTimeText = "${formatDuration(targetPosition)} / ${formatDuration(duration)}"
                             showSlideTip = true
                         }
                     }
                 )
             }
     ) {
-        // 使用 RESIZE_MODE_FIT，保证视频比例正常并带有沉浸式黑边
+        // 使用 RESIZE_MODE_FIT，保证视频比例正常并带有黑边
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
@@ -409,7 +427,7 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
             }
         }
 
-        // 右侧半屏长按 2 倍速触发层
+        // 右侧半屏：优化后的长按 2 倍速（需按住 400ms 触发，避免太灵敏误触，且不卡滑动）
         Box(
             modifier = Modifier
                 .fillMaxHeight()
@@ -418,24 +436,47 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                 .pointerInput(Unit) {
                     awaitPointerEventScope {
                         while (true) {
-                            val event = awaitPointerEvent()
-                            if (event.changes.any { it.pressed }) {
+                            val down = awaitFirstDown()
+                            var isLongPress = false
+                            val startTime = System.currentTimeMillis()
+                            
+                            // 检查是否持续按住超过 400ms 且未松手
+                            var released = false
+                            while (!released) {
+                                val event = awaitPointerEvent()
+                                if (event.changes.any { !it.pressed }) {
+                                    released = true
+                                } else {
+                                    if (System.currentTimeMillis() - startTime > 400) {
+                                        isLongPress = true
+                                        break
+                                    }
+                                }
+                            }
+                            
+                            if (isLongPress) {
                                 exoPlayer.setPlaybackSpeed(2.0f)
                                 isSpeedingUp = true
                                 showSpeedTip = true
-                            } else {
-                                if (isSpeedingUp) {
-                                    exoPlayer.setPlaybackSpeed(1.0f)
-                                    isSpeedingUp = false
-                                    showSpeedTip = false
+                                
+                                // 等待用户最终松开手指
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    if (event.changes.any { !it.pressed }) {
+                                        break
+                                    }
                                 }
+                                
+                                exoPlayer.setPlaybackSpeed(1.0f)
+                                isSpeedingUp = false
+                                showSpeedTip = false
                             }
                         }
                     }
                 }
         )
 
-        // 提示或错误浮层
+        // 提示或错误浮层（整合了滑动详细秒数、目标时间与倍速提示）
         if (showSpeedTip || showSlideTip || errorMessage != null) {
             Box(
                 modifier = Modifier
@@ -444,11 +485,21 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                     .background(Color.Black.copy(alpha = 0.8f))
                     .padding(horizontal = 20.dp, vertical = 12.dp)
             ) {
-                Text(
-                    text = errorMessage ?: if (showSpeedTip) "⚡ 正在以 2.0x 倍速播放" else slideDirectionText,
-                    color = if (errorMessage != null) Color.Red else Color.White,
-                    fontSize = 15.sp
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = errorMessage ?: if (showSpeedTip) "⚡ 正在以 2.0x 倍速播放" else slideTipText,
+                        color = if (errorMessage != null) Color.Red else Color.White,
+                        fontSize = 15.sp
+                    )
+                    if (showSlideTip && errorMessage == null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = targetTimeText,
+                            color = Color.LightGray,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
             }
         }
     }
