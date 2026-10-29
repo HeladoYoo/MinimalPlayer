@@ -75,7 +75,7 @@ class MainActivity : ComponentActivity() {
 }
 
 enum class Screen {
-    PermissionRequest, Home, VideoList, Player
+    PermissionRequest, Home, VideoList, Player, Settings, AppearanceSettings
 }
 
 @Composable
@@ -83,7 +83,6 @@ fun MinimalPlayerTheme(content: @Composable () -> Unit) {
     MaterialTheme(content = content)
 }
 
-// 检查是否已经授予了视频权限
 fun hasVideoPermission(context: Context): Boolean {
     val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_VIDEO
@@ -96,36 +95,53 @@ fun hasVideoPermission(context: Context): Boolean {
 @Composable
 fun MainAppNavigator() {
     val context = LocalContext.current
-    // 如果已有权限直接进 Home，否则展示权限请求引导页
     var currentScreen by rememberSaveable { 
         mutableStateOf(if (hasVideoPermission(context)) Screen.Home else Screen.PermissionRequest) 
     }
     var currentVideoUri by rememberSaveable { mutableStateOf("") }
+    var isDarkMode by rememberSaveable { mutableStateOf(false) } // 全局深色/浅色模式
 
-    val meshBackgroundBrush = Brush.radialGradient(
-        colors = listOf(
-            Color(0xFFFFC0CB),
-            Color(0xFFFFDAB9),
-            Color(0xFFE0ECFF)
-        ),
-        center = Offset(300f, 400f),
-        radius = 1600f
-    )
+    // 根据模式调整全局背景颜色
+    val backgroundModifier = if (isDarkMode) {
+        Modifier.fillMaxSize().background(Color(0xFF121212))
+    } else {
+        Modifier.fillMaxSize().background(
+            Brush.radialGradient(
+                colors = listOf(Color(0xFFFFC0CB), Color(0xFFFFDAB9), Color(0xFFE0ECFF)),
+                center = Offset(300f, 400f),
+                radius = 1600f
+            )
+        )
+    }
 
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(meshBackgroundBrush)
-            .padding(if (currentScreen == Screen.Player) 0.dp else 16.dp)
+        modifier = backgroundModifier.padding(if (currentScreen == Screen.Player) 0.dp else 16.dp)
     ) {
         when (currentScreen) {
             Screen.PermissionRequest -> PermissionRequestScreen(
                 onGrantedOrSkipped = { currentScreen = Screen.Home }
             )
             Screen.Home -> ModernHomeScreen(
-                onCardClick = { currentScreen = Screen.VideoList }
+                isDarkMode = isDarkMode,
+                onCardClick = { cardTitle ->
+                    when (cardTitle) {
+                        "本地电影" -> currentScreen = Screen.VideoList
+                        "设置中心" -> currentScreen = Screen.Settings
+                    }
+                }
+            )
+            Screen.Settings -> SettingsScreen(
+                isDarkMode = isDarkMode,
+                onBackClick = { currentScreen = Screen.Home },
+                onAppearanceClick = { currentScreen = Screen.AppearanceSettings }
+            )
+            Screen.AppearanceSettings -> AppearanceSettingsScreen(
+                isDarkMode = isDarkMode,
+                onThemeChange = { dark -> isDarkMode = dark },
+                onBackClick = { currentScreen = Screen.Settings }
             )
             Screen.VideoList -> VideoListScreen(
+                isDarkMode = isDarkMode,
                 onBackClick = { currentScreen = Screen.Home },
                 onVideoClick = { uri ->
                     currentVideoUri = uri
@@ -140,104 +156,107 @@ fun MainAppNavigator() {
     }
 }
 
-// ✨ 独立权限引导页面（模仿截图风格）
+// 权限请求引导页
 @Composable
 fun PermissionRequestScreen(onGrantedOrSkipped: () -> Unit) {
-    val context = LocalContext.current
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { _ ->
-        // 无论用户点允许还是拒绝，都可以进入软件
         onGrantedOrSkipped()
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.White)
             .statusBarsPadding()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
+            .padding(24.dp)
     ) {
-        Spacer(modifier = Modifier.height(20.dp))
-
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = "MinimalPlayer",
-                fontSize = 26.sp,
-                color = Color(0xFF1D1B20),
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(70.dp))
-
-            // 图标占位盒子
-            Box(
-                modifier = Modifier
-                    .size(110.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(Color(0xFFF0F2F5)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(text = "📁", fontSize = 42.sp)
-            }
-
-            Spacer(modifier = Modifier.height(30.dp))
-
-            Text(
-                text = "查找您的视频",
-                fontSize = 22.sp,
-                color = Color(0xFF1D1B20),
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Text(
-                text = "Android 限制应用访问和管理文件的方式。“文件访问权限”可帮助 MinimalPlayer 查找您手机不同文件夹中的本地视频文件。",
-                fontSize = 13.sp,
-                color = Color.Gray,
-                textAlign = TextAlign.Center,
-                lineHeight = 20.sp
-            )
-        }
-
         Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Button(
-                onClick = {
-                    val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        Manifest.permission.READ_MEDIA_VIDEO
-                    } else {
-                        Manifest.permission.READ_EXTERNAL_STORAGE
-                    }
-                    permissionLauncher.launch(permission)
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp),
-                shape = RoundedCornerShape(25.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6))
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "MinimalPlayer",
+                    fontSize = 26.sp,
+                    color = Color(0xFF1D1B20),
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(70.dp))
+
+                Box(
+                    modifier = Modifier
+                        .size(110.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(Color(0xFFF0F2F5)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "📁", fontSize = 42.sp)
+                }
+
+                Spacer(modifier = Modifier.height(30.dp))
+
+                Text(
+                    text = "查找您的视频",
+                    fontSize = 22.sp,
+                    color = Color(0xFF1D1B20),
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "Android 限制应用访问和管理文件的方式。“文件访问权限”可帮助 MinimalPlayer 查找您手机不同文件夹中的本地视频文件。",
+                    fontSize = 13.sp,
+                    color = Color.Gray,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 20.sp
+                )
+            }
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(text = "允许访问视频文件", color = Color.White, fontSize = 15.sp)
+                Button(
+                    onClick = {
+                        val permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            Manifest.permission.READ_MEDIA_VIDEO
+                        } else {
+                            Manifest.permission.READ_EXTERNAL_STORAGE
+                        }
+                        permissionLauncher.launch(permission)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                    shape = RoundedCornerShape(25.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6))
+                ) {
+                    Text(text = "允许访问视频文件", color = Color.White, fontSize = 15.sp)
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                TextButton(onClick = onGrantedOrSkipped) {
+                    Text(text = "仅使用基础功能继续", color = Color.Gray, fontSize = 13.sp)
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            TextButton(onClick = onGrantedOrSkipped) {
-                Text(text = "仅使用基础功能继续", color = Color.Gray, fontSize = 13.sp)
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
 
 @Composable
-fun ModernHomeScreen(onCardClick: () -> Unit) {
+fun ModernHomeScreen(isDarkMode: Boolean, onCardClick: (String) -> Unit) {
+    val textColor = if (isDarkMode) Color.White else Color(0xFF1D1B20)
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -246,7 +265,8 @@ fun ModernHomeScreen(onCardClick: () -> Unit) {
         Text(
             text = "MinimalPlayer",
             fontSize = 26.sp,
-            color = Color(0xFF1D1B20),
+            color = textColor,
+            fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(bottom = 20.dp, start = 4.dp)
         )
 
@@ -260,31 +280,42 @@ fun ModernHomeScreen(onCardClick: () -> Unit) {
                     title = "本地电影", 
                     subtitle = "4K / 高清专区", 
                     count = "点击进入列表",
-                    onClick = onCardClick
+                    isDarkMode = isDarkMode,
+                    onClick = { onCardClick("本地电影") }
                 ) 
             }
-            item { GlassCard(title = "最近播放", subtitle = "断点续播记录", count = "历史记录", onClick = {}) }
-            item { GlassCard(title = "我的收藏", subtitle = "精选喜爱视频", count = "快捷访问", onClick = {}) }
-            item { GlassCard(title = "设置中心", subtitle = "外观与解码偏好", count = "个性化", onClick = {}) }
+            item { GlassCard(title = "最近播放", subtitle = "断点续播记录", count = "历史记录", isDarkMode = isDarkMode, onClick = {}) }
+            item { GlassCard(title = "我的收藏", subtitle = "精选喜爱视频", count = "快捷访问", isDarkMode = isDarkMode, onClick = {}) }
+            item { 
+                GlassCard(
+                    title = "设置中心", 
+                    subtitle = "外观与解码偏好", 
+                    count = "个性化", 
+                    isDarkMode = isDarkMode,
+                    onClick = { onCardClick("设置中心") }
+                ) 
+            }
         }
     }
 }
 
 @Composable
-fun GlassCard(title: String, subtitle: String, count: String, onClick: () -> Unit) {
+fun GlassCard(title: String, subtitle: String, count: String, isDarkMode: Boolean, onClick: () -> Unit) {
+    val cardBg = if (isDarkMode) Color(0xFF1E1E1E).copy(alpha = 0.8f) else Color.White.copy(alpha = 0.5f)
+    val textColor = if (isDarkMode) Color.White else Color.Black
+    val subTextColor = if (isDarkMode) Color.LightGray else Color.DarkGray
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(130.dp)
             .clip(RoundedCornerShape(24.dp))
-            .background(Color.White.copy(alpha = 0.5f))
+            .background(cardBg)
             .border(
                 width = 1.dp,
                 brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.8f),
-                        Color.White.copy(alpha = 0.2f)
-                    )
+                    colors = if (isDarkMode) listOf(Color.White.copy(alpha = 0.2f), Color.Transparent)
+                    else listOf(Color.White.copy(alpha = 0.8f), Color.White.copy(alpha = 0.2f))
                 ),
                 shape = RoundedCornerShape(24.dp)
             )
@@ -296,22 +327,244 @@ fun GlassCard(title: String, subtitle: String, count: String, onClick: () -> Uni
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Column {
-                Text(text = title, fontSize = 17.sp, color = Color.Black)
+                Text(text = title, fontSize = 17.sp, color = textColor, fontWeight = FontWeight.SemiBold)
                 Spacer(modifier = Modifier.height(2.dp))
-                Text(text = subtitle, fontSize = 11.sp, color = Color.DarkGray)
+                Text(text = subtitle, fontSize = 11.sp, color = subTextColor)
             }
-            Text(text = count, fontSize = 11.sp, color = Color.Gray)
+            Text(text = count, fontSize = 11.sp, color = subTextColor)
         }
     }
 }
 
+// ✨ 设置中心主页面（优化层级与结构）
 @Composable
-fun VideoListScreen(onBackClick: () -> Unit, onVideoClick: (String) -> Unit) {
+fun SettingsScreen(isDarkMode: Boolean, onBackClick: () -> Unit, onAppearanceClick: () -> Unit) {
+    val textColor = if (isDarkMode) Color.White else Color(0xFF1D1B20)
+    val cardBg = if (isDarkMode) Color(0xFF1E1E1E) else Color.White.copy(alpha = 0.6f)
+    val subTextColor = if (isDarkMode) Color.LightGray else Color.DarkGray
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "设置中心", fontSize = 24.sp, color = textColor, fontWeight = FontWeight.Bold)
+            Button(
+                onClick = onBackClick,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isDarkMode) Color(0xFF333333) else Color.White.copy(alpha = 0.6f)
+                )
+            ) {
+                Text(text = "返回", color = textColor)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // 设置选项卡片 1：外观设置
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(cardBg)
+                .clickable { onAppearanceClick() }
+                .padding(20.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(text = "外观设置", fontSize = 16.sp, color = textColor, fontWeight = FontWeight.Medium)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(text = "深色模式、浅色模式切换", fontSize = 12.sp, color = subTextColor)
+                }
+                Text(text = "›", fontSize = 22.sp, color = subTextColor)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // 设置选项卡片 2：播放偏好（预留）
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(cardBg)
+                .clickable { }
+                .padding(20.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(text = "播放偏好", fontSize = 16.sp, color = textColor, fontWeight = FontWeight.Medium)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(text = "手势、解码与播放速度默认值", fontSize = 12.sp, color = subTextColor)
+                }
+                Text(text = "›", fontSize = 22.sp, color = subTextColor)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // 设置选项卡片 3：关于软件
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(cardBg)
+                .clickable { }
+                .padding(20.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(text = "关于 MinimalPlayer", fontSize = 16.sp, color = textColor, fontWeight = FontWeight.Medium)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(text = "版本 v1.1.0", fontSize = 12.sp, color = subTextColor)
+                }
+                Text(text = "›", fontSize = 22.sp, color = subTextColor)
+            }
+        }
+    }
+}
+
+// ✨ 外观设置子页面（黑白模式选择，层级清晰）
+@Composable
+fun AppearanceSettingsScreen(isDarkMode: Boolean, onThemeChange: (Boolean) -> Unit, onBackClick: () -> Unit) {
+    val textColor = if (isDarkMode) Color.White else Color(0xFF1D1B20)
+    val cardBg = if (isDarkMode) Color(0xFF1E1E1E) else Color.White.copy(alpha = 0.6f)
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "外观设置", fontSize = 24.sp, color = textColor, fontWeight = FontWeight.Bold)
+            Button(
+                onClick = onBackClick,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isDarkMode) Color(0xFF333333) else Color.White.copy(alpha = 0.6f)
+                )
+            ) {
+                Text(text = "返回", color = textColor)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Text(text = "选择主题模式", fontSize = 14.sp, color = if (isDarkMode) Color.LightGray else Color.DarkGray)
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // 浅色模式选项卡
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(cardBg)
+                .border(
+                    width = if (!isDarkMode) 2.dp else 0.dp,
+                    color = Color(0xFF3B82F6),
+                    shape = RoundedCornerShape(20.dp)
+                )
+                .clickable { onThemeChange(false) }
+                .padding(20.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.White)
+                            .border(1.dp, Color.LightGray, RoundedCornerShape(12.dp))
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text(text = "浅色模式 (Light)", fontSize = 16.sp, color = textColor, fontWeight = FontWeight.Medium)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(text = "清爽简洁的纯白视觉风格", fontSize = 12.sp, color = if (isDarkMode) Color.LightGray else Color.DarkGray)
+                    }
+                }
+                if (!isDarkMode) {
+                    Text(text = "✓ 已选择", fontSize = 13.sp, color = Color(0xFF3B82F6), fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // 深色模式选项卡
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(cardBg)
+                .border(
+                    width = if (isDarkMode) 2.dp else 0.dp,
+                    color = Color(0xFF3B82F6),
+                    shape = RoundedCornerShape(20.dp)
+                )
+                .clickable { onThemeChange(true) }
+                .padding(20.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.Black)
+                            .border(1.dp, Color.DarkGray, RoundedCornerShape(12.dp))
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text(text = "深色模式 (Dark)", fontSize = 16.sp, color = textColor, fontWeight = FontWeight.Medium)
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(text = "纯黑沉浸护眼风格", fontSize = 12.sp, color = if (isDarkMode) Color.LightGray else Color.DarkGray)
+                    }
+                }
+                if (isDarkMode) {
+                    Text(text = "✓ 已选择", fontSize = 13.sp, color = Color(0xFF3B82F6), fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+// 本地视频库页面
+@Composable
+fun VideoListScreen(isDarkMode: Boolean, onBackClick: () -> Unit, onVideoClick: (String) -> Unit) {
     val context = LocalContext.current
     var videoList by remember { mutableStateOf(listOf<VideoItem>()) }
+    val textColor = if (isDarkMode) Color.White else Color(0xFF1D1B20)
 
     LaunchedEffect(Unit) {
-        // 如果没有权限，直接跳过查询，返回空列表
         if (!hasVideoPermission(context)) return@LaunchedEffect
 
         val list = mutableListOf<VideoItem>()
@@ -359,12 +612,14 @@ fun VideoListScreen(onBackClick: () -> Unit, onVideoClick: (String) -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(text = "本地视频库", fontSize = 22.sp, color = Color(0xFF1D1B20))
+            Text(text = "本地视频库", fontSize = 24.sp, color = textColor, fontWeight = FontWeight.Bold)
             Button(
                 onClick = onBackClick,
-                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.6f))
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isDarkMode) Color(0xFF333333) else Color.White.copy(alpha = 0.6f)
+                )
             ) {
-                Text(text = "返回", color = Color.Black)
+                Text(text = "返回", color = textColor)
             }
         }
 
@@ -375,22 +630,14 @@ fun VideoListScreen(onBackClick: () -> Unit, onVideoClick: (String) -> Unit) {
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "您未授予文件访问权限，无法加载本地视频",
-                    color = Color.Gray,
-                    fontSize = 14.sp
-                )
+                Text(text = "您未授予文件访问权限，无法加载本地视频", color = if (isDarkMode) Color.LightGray else Color.Gray, fontSize = 14.sp)
             }
         } else if (videoList.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "未在手机中找到视频文件",
-                    color = Color.Gray,
-                    fontSize = 14.sp
-                )
+                Text(text = "未在手机中找到视频文件", color = if (isDarkMode) Color.LightGray else Color.Gray, fontSize = 14.sp)
             }
         } else {
             LazyVerticalGrid(
@@ -400,7 +647,7 @@ fun VideoListScreen(onBackClick: () -> Unit, onVideoClick: (String) -> Unit) {
                 modifier = Modifier.fillMaxSize()
             ) {
                 items(videoList) { video ->
-                    VideoCardItem(video = video, onClick = { onVideoClick(video.uri) })
+                    VideoCardItem(video = video, isDarkMode = isDarkMode, onClick = { onVideoClick(video.uri) })
                 }
             }
         }
@@ -408,9 +655,11 @@ fun VideoListScreen(onBackClick: () -> Unit, onVideoClick: (String) -> Unit) {
 }
 
 @Composable
-fun VideoCardItem(video: VideoItem, onClick: () -> Unit) {
+fun VideoCardItem(video: VideoItem, isDarkMode: Boolean, onClick: () -> Unit) {
     val context = LocalContext.current
     var thumbnailBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    val cardBg = if (isDarkMode) Color(0xFF1E1E1E) else Color.White.copy(alpha = 0.5f)
+    val textColor = if (isDarkMode) Color.White else Color(0xFF1D1B20)
 
     LaunchedEffect(video.uri) {
         withContext(Dispatchers.IO) {
@@ -436,23 +685,19 @@ fun VideoCardItem(video: VideoItem, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(Color.White.copy(alpha = 0.5f))
+            .background(cardBg)
             .border(
                 width = 1.dp,
                 brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.8f),
-                        Color.White.copy(alpha = 0.2f)
-                    )
+                    colors = if (isDarkMode) listOf(Color.White.copy(alpha = 0.2f), Color.Transparent)
+                    else listOf(Color.White.copy(alpha = 0.8f), Color.White.copy(alpha = 0.2f))
                 ),
                 shape = RoundedCornerShape(20.dp)
             )
             .clickable { onClick() }
             .padding(12.dp)
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -493,7 +738,7 @@ fun VideoCardItem(video: VideoItem, onClick: () -> Unit) {
             Text(
                 text = video.name,
                 fontSize = 13.sp,
-                color = Color(0xFF1D1B20),
+                color = textColor,
                 maxLines = 2,
                 lineHeight = 18.sp
             )
@@ -503,7 +748,7 @@ fun VideoCardItem(video: VideoItem, onClick: () -> Unit) {
             Text(
                 text = "本地高清视频",
                 fontSize = 11.sp,
-                color = Color.DarkGray
+                color = if (isDarkMode) Color.LightGray else Color.DarkGray
             )
         }
     }
@@ -553,199 +798,4 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
             try {
-                val mediaItem = MediaItem.fromUri(Uri.parse(videoUri))
-                setMediaItem(mediaItem)
-                prepare()
-                playWhenReady = true
-            } catch (e: Exception) {
-                e.printStackTrace()
-                errorMessage = "初始化异常: ${e.localizedMessage}"
-            }
-
-            addListener(object : Player.Listener {
-                override fun onPlayerError(error: PlaybackException) {
-                    super.onPlayerError(error)
-                    errorMessage = "播放失败: ${error.errorCodeName} - ${error.message}"
-                }
-            })
-        }
-    }
-
-    DisposableEffect(exoPlayer) {
-        onDispose {
-            exoPlayer.release()
-        }
-    }
-
-    var slideTipText by remember { mutableStateOf("") }
-    var targetTimeText by remember { mutableStateOf("") }
-    var showSlideTip by remember { mutableStateOf(false) }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .pointerInput(Unit) {
-                detectHorizontalDragGestures(
-                    onDragEnd = {
-                        showSlideTip = false
-                    },
-                    onHorizontalDrag = { _, dragAmount ->
-                        if (!isSpeedingUp && abs(dragAmount) > 2f) {
-                            val currentPosition = exoPlayer.currentPosition
-                            val duration = exoPlayer.duration.coerceAtLeast(1L)
-                            val seekOffset = (dragAmount * 15).toLong() 
-                            var targetPosition = (currentPosition + seekOffset).coerceIn(0L, duration)
-                            
-                            exoPlayer.seekTo(targetPosition)
-                            
-                            val offsetSec = seekOffset / 1000
-                            val sign = if (offsetSec >= 0) "+" else ""
-                            slideTipText = if (dragAmount > 0) "快进 ⏩ (${sign}${offsetSec}s)" else "快退 ⏪ (${offsetSec}s)"
-                            targetTimeText = "${formatDuration(targetPosition)} / ${formatDuration(duration)}"
-                            showSlideTip = true
-                        }
-                    }
-                )
-            }
-    ) {
-        AndroidView(
-            factory = { ctx ->
-                PlayerView(ctx).apply {
-                    player = exoPlayer
-                    useController = true
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT 
-                }
-            },
-            modifier = Modifier.fillMaxSize()
-        )
-
-        Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .align(Alignment.TopStart),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Button(
-                onClick = {
-                    exoPlayer.release()
-                    onBackClick()
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Black.copy(alpha = 0.5f))
-            ) {
-                Text(text = "返回", color = Color.White)
-            }
-        }
-
-        Box(
-            modifier = Modifier
-                .fillMaxHeight()
-                .fillMaxWidth(0.5f)
-                .align(Alignment.CenterEnd)
-                .pointerInput(Unit) {
-                    awaitPointerEventScope {
-                        while (true) {
-                            val down = awaitFirstDown()
-                            val startTime = System.currentTimeMillis()
-                            val startPosition = down.position
-                            var isDragging = false
-                            var isLongPress = false
-
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                if (event.changes.any { !it.pressed }) {
-                                    break
-                                }
-                                
-                                val currentPos = event.changes.first().position
-                                if (abs(currentPos.x - startPosition.x) > 10f) {
-                                    isDragging = true
-                                    break
-                                }
-
-                                if (System.currentTimeMillis() - startTime > 400) {
-                                    isLongPress = true
-                                    break
-                                }
-                            }
-
-                            if (isDragging) {
-                                var lastX = startPosition.x
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    if (event.changes.any { !it.pressed }) {
-                                        showSlideTip = false
-                                        break
-                                    }
-                                    val currentX = event.changes.first().position.x
-                                    val deltaX = currentX - lastX
-                                    lastX = currentX
-
-                                    if (abs(deltaX) > 0.5f) {
-                                        val currentPosition = exoPlayer.currentPosition
-                                        val duration = exoPlayer.duration.coerceAtLeast(1L)
-                                        val seekOffset = (deltaX * 15).toLong()
-                                        var targetPosition = (currentPosition + seekOffset).coerceIn(0L, duration)
-                                        
-                                        exoPlayer.seekTo(targetPosition)
-                                        
-                                        val offsetSec = seekOffset / 1000
-                                        val sign = if (offsetSec >= 0) "+" else ""
-                                        slideTipText = if (deltaX > 0) "快进 ⏩ (${sign}${offsetSec}s)" else "快退 ⏪ (${offsetSec}s)"
-                                        targetTimeText = "${formatDuration(targetPosition)} / ${formatDuration(duration)}"
-                                        showSlideTip = true
-                                        showSpeedTip = false
-                                    }
-                                }
-                            } else if (isLongPress) {
-                                exoPlayer.setPlaybackSpeed(2.0f)
-                                isSpeedingUp = true
-                                showSpeedTip = true
-                                showSlideTip = false
-
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    if (event.changes.any { !it.pressed }) {
-                                        break
-                                    }
-                                }
-
-                                exoPlayer.setPlaybackSpeed(1.0f)
-                                isSpeedingUp = false
-                                showSpeedTip = false
-                            }
-                        }
-                    }
-                }
-        )
-
-        if (showSpeedTip || showSlideTip || errorMessage != null) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.Black.copy(alpha = 0.8f))
-                    .padding(horizontal = 20.dp, vertical = 12.dp)
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = errorMessage ?: if (showSpeedTip) "⚡ 正在以 2.0x 倍速播放" else slideTipText,
-                        color = if (errorMessage != null) Color.Red else Color.White,
-                        fontSize = 15.sp
-                    )
-                    if (showSlideTip && !showSpeedTip && errorMessage == null) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = targetTimeText,
-                            color = Color.LightGray,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-data class VideoItem(val name: String, val uri: String, val duration: Long)
+                
