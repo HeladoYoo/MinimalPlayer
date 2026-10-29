@@ -376,7 +376,7 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                         showSlideTip = false
                     },
                     onHorizontalDrag = { _, dragAmount ->
-                        if (abs(dragAmount) > 2f) {
+                        if (!isSpeedingUp && abs(dragAmount) > 2f) {
                             val currentPosition = exoPlayer.currentPosition
                             val duration = exoPlayer.duration.coerceAtLeast(1L)
                             val seekOffset = (dragAmount * 15).toLong() 
@@ -423,6 +423,7 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
             }
         }
 
+        // 右侧半屏：完美整合“滑动优先、长按次之”的判定逻辑
         Box(
             modifier = Modifier
                 .fillMaxHeight()
@@ -432,34 +433,74 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                     awaitPointerEventScope {
                         while (true) {
                             val down = awaitFirstDown()
-                            var isLongPress = false
                             val startTime = System.currentTimeMillis()
-                            
-                            var released = false
-                            while (!released) {
+                            val startPosition = down.position
+                            var isDragging = false
+                            var isLongPress = false
+
+                            // 在 400ms 内检测手指是否发生了横向滑动
+                            while (true) {
                                 val event = awaitPointerEvent()
                                 if (event.changes.any { !it.pressed }) {
-                                    released = true
-                                } else {
-                                    if (System.currentTimeMillis() - startTime > 400) {
-                                        isLongPress = true
-                                        break
-                                    }
+                                    break
+                                }
+                                
+                                val currentPos = event.changes.first().position
+                                if (abs(currentPos.x - startPosition.x) > 10f) {
+                                    isDragging = true
+                                    break
+                                }
+
+                                if (System.currentTimeMillis() - startTime > 400) {
+                                    isLongPress = true
+                                    break
                                 }
                             }
-                            
-                            if (isLongPress) {
+
+                            // 如果是滑动，则执行滑动快进/后退逻辑
+                            if (isDragging) {
+                                var lastX = startPosition.x
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    if (event.changes.any { !it.pressed }) {
+                                        showSlideTip = false
+                                        break
+                                    }
+                                    val currentX = event.changes.first().position.x
+                                    val deltaX = currentX - lastX
+                                    lastX = currentX
+
+                                    if (abs(deltaX) > 0.5f) {
+                                        val currentPosition = exoPlayer.currentPosition
+                                        val duration = exoPlayer.duration.coerceAtLeast(1L)
+                                        val seekOffset = (deltaX * 15).toLong()
+                                        var targetPosition = (currentPosition + seekOffset).coerceIn(0L, duration)
+                                        
+                                        exoPlayer.seekTo(targetPosition)
+                                        
+                                        val offsetSec = seekOffset / 1000
+                                        val sign = if (offsetSec >= 0) "+" else ""
+                                        slideTipText = if (deltaX > 0) "快进 ⏩ (${sign}${offsetSec}s)" else "快退 ⏪ (${offsetSec}s)"
+                                        targetTimeText = "${formatDuration(targetPosition)} / ${formatDuration(duration)}"
+                                        showSlideTip = true
+                                        showSpeedTip = false
+                                    }
+                                }
+                            } 
+                            // 如果没有滑动且稳稳按住超过 400ms，则触发 2 倍速
+                            else if (isLongPress) {
                                 exoPlayer.setPlaybackSpeed(2.0f)
                                 isSpeedingUp = true
                                 showSpeedTip = true
-                                
+                                showSlideTip = false
+
                                 while (true) {
                                     val event = awaitPointerEvent()
                                     if (event.changes.any { !it.pressed }) {
                                         break
                                     }
                                 }
-                                
+
                                 exoPlayer.setPlaybackSpeed(1.0f)
                                 isSpeedingUp = false
                                 showSpeedTip = false
@@ -469,6 +510,7 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                 }
         )
 
+        // 浮层提示：严格区分倍速提示与滑动时间提示
         if (showSpeedTip || showSlideTip || errorMessage != null) {
             Box(
                 modifier = Modifier
@@ -483,7 +525,7 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                         color = if (errorMessage != null) Color.Red else Color.White,
                         fontSize = 15.sp
                     )
-                    if (showSlideTip && errorMessage == null) {
+                    if (showSlideTip && !showSpeedTip && errorMessage == null) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = targetTimeText,
