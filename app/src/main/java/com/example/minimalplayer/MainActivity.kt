@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -81,8 +82,9 @@ fun MinimalPlayerTheme(content: @Composable () -> Unit) {
 
 @Composable
 fun MainAppNavigator() {
-    var currentScreen by remember { mutableStateOf(Screen.Home) }
-    var currentVideoUri by remember { mutableStateOf("") }
+    // 使用 rememberSaveable 防止屏幕旋转或配置改变时状态丢失
+    var currentScreen by rememberSaveable { mutableStateOf(Screen.Home) }
+    var currentVideoUri by rememberSaveable { mutableStateOf("") }
 
     val meshBackgroundBrush = Brush.radialGradient(
         colors = listOf(
@@ -319,9 +321,8 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
 
     var isSpeedingUp by remember { mutableStateOf(false) }
     var showSpeedTip by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) } // 用于捕获并显示播放错误
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // 2. 初始化 ExoPlayer 并加入错误监听
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
             try {
@@ -378,7 +379,6 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                 )
             }
     ) {
-        // 视频渲染视图
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
@@ -390,7 +390,6 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
             modifier = Modifier.fillMaxSize()
         )
 
-        // 返回按钮
         Row(
             modifier = Modifier
                 .padding(16.dp)
@@ -409,7 +408,6 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
             }
         }
 
-        // 右侧半屏长按 2 倍速触发层
         Box(
             modifier = Modifier
                 .fillMaxHeight()
@@ -435,7 +433,6 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                 }
         )
 
-        // 提示或错误浮层
         if (showSpeedTip || showSlideTip || errorMessage != null) {
             Box(
                 modifier = Modifier
