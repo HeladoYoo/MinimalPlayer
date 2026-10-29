@@ -1,33 +1,82 @@
-# Minimal Player — Android video player starter
+# 芙芙播放器
+✨ 简约风格安卓视频播放器，适配 Android 13 及以上
 
-A Kotlin + Jetpack Compose + Media3 starter for Android 13+ (API 33+), with a restrained macOS-inspired visual direction: generous spacing, rounded surfaces, neutral palette, light/dark theme, and simple controls.
+最低版本：Android 13（API 33）
+目标SDK：Android 16（API 36）
+技术：Kotlin + Jetpack Compose + Media3(ExoPlayer) + Hilt + Room
 
-## Open and run
-1. Install Android Studio (current stable) and Android SDK 35.
-2. Open this folder in Android Studio and allow Gradle sync.
-3. Run the `app` configuration on an Android 13+ device/emulator.
+## 项目介绍
+芙芙播放器 是一款干净轻量的本地+网络视频播放器，UI参考macOS设计风格，仿访达文件浏览体验，无广告。
+支持本地文件夹管理、网络流媒体播放，集成字幕、手势、续播、画中画等实用播放功能。
 
-## Included in this starter
-- Local video picker using Android Storage Access Framework (no broad storage permission needed).
-- Network video URL entry.
-- Media3 ExoPlayer playback and basic player screen.
-- Light/dark theme toggle persisted in preferences.
-- Playback position memory per media URI and resume prompt.
-- Playback speed selector.
-- External subtitle picker (SRT/VTT/ASS/SSA/TTML support depends on Media3 parser/build).
-- Basic tap/seek gestures.
-- Picture-in-picture manifest support and entry hook.
-- Searchable recent-media list and sorting.
-- Folder URI picker entry point (SAF tree selection).
+## 功能列表
+### 📂 本地视频
+- 使用SAF存储框架访问视频目录，支持树形文件夹浏览
+- 双列卡片网格展示视频（仿信息流样式），显示缩略图、文件名、时长
+- 支持搜索视频、多种排序方式（修改时间、文件名、文件大小）
+- 支持收藏常用文件夹、屏蔽不想扫描的文件夹
 
-## Important implementation notes
-This is a **starter project**, not a production-ready release. Validate Gradle sync/build against your installed Android Studio and SDK. Media3 PiP and background playback require device testing; a robust always-on background playback experience should move playback ownership into a `MediaSessionService`. The folder picker currently records the selected folder URI; recursive media indexing and persistent tree access should be implemented before release. Subtitle parsing for formats beyond SRT/VTT may need Media3 extension dependencies. Network playback requires a direct media URL supported by Media3; arbitrary web pages and DRM services are not direct video URLs.
+### 🌐 网络视频
+- 支持 MP4、HLS(m3u8) 流媒体链接播放
+- 可以保存网络播放链接，链接同样支持搜索
 
-## Suggested next milestones
-1. Add `MediaSessionService` for true background playback and notification/media controls.
-2. Add MediaStore indexing + folder browser, thumbnail cache, and resume database (Room).
-3. Add robust gesture overlay, subtitle styling/sync, playlist, and network error states.
-4. Add automated tests, accessibility review, privacy disclosures, and release signing.
+### 🎬 播放器核心功能
+- 外挂字幕：支持 srt、vtt 字幕；同目录字幕自动匹配，也可手动选择字幕文件
+- 字幕自定义：字号、文字颜色、描边、字幕位置、字幕时间偏移
+- 手势控制：左右滑动调节进度、左侧上下调节亮度、右侧上下调节音量、双击暂停播放
+- 记忆续播：自动保存播放进度，打开视频可选择继续上次播放
+- 倍速播放：0.5x ~ 2.0x 档位变速，自动记住上次使用的倍速
+- 画中画PiP：原生Android画中画，小窗继续播放
+- 后台播放：切到后台继续播放音频，通知栏提供播放控制
 
-## Cloud build workflow
-A GitHub Actions workflow is included at `.github/workflows/build-apk.yml`. To use it, upload this project to a GitHub repository, then run **Actions → Build Android APK → Run workflow**. Download `MinimalPlayer-debug-apk` from the completed run's Artifacts section. The current chat environment does not include Android SDK or Gradle, so it cannot itself produce or verify an APK.
+### 🎨 界面与主题
+- macOS简约视觉：大圆角、低饱和配色、毛玻璃控件、宽松留白
+- 浅色/深色主题一键切换，也可以跟随系统主题
+- 侧边导航 + 内容区双栏布局
+
+## 技术栈
+- 开发语言：Kotlin
+- UI框架：Jetpack Compose Material3
+- 播放器内核：Media3（原ExoPlayer）
+- 依赖注入：Hilt
+- 本地数据库：Room（存放播放记录、网络链接、设置偏好）
+- 异步：协程 + Flow
+- 图片加载：Coil
+- 文件访问：SAF 存储访问框架（适配Android13媒体权限）
+
+## 权限说明
+| 权限 | 作用 |
+| ---- | ---- |
+| READ_MEDIA_VIDEO | 读取本地视频文件 |
+| POST_NOTIFICATIONS | 后台播放时显示媒体通知 |
+| INTERNET | 加载网络流媒体视频 |
+
+> 所有播放记录、视频信息只保存在本机，不会自动上传到服务器。
+
+## 页面说明
+- 侧边导航栏：本地视频、网络链接、播放历史、收藏文件夹
+- 媒体浏览页：双列卡片网格，视频缩略图展示
+- 播放页面：自动隐藏毛玻璃控制栏，支持调出字幕、倍速设置弹窗
+- 设置页面：主题切换、手势开关、字幕默认参数、文件夹扫描管理
+
+## 后续开发计划
+- 支持 ass/ssa 字幕，自动识别字幕编码，解决字幕乱码
+- 播放列表、连续播放功能
+- 视频详情页，查看分辨率、编码、码率信息
+- 缩略图缓存优化，加快列表加载速度
+- 自定义解码器扩展
+
+## 编译运行
+1. Android Studio 推荐 Hedgehog 或更高版本
+2. 使用 JDK 17
+3. 同步Gradle依赖，直接编译安装
+4. 首次打开App，请授予视频媒体访问权限
+
+## 注意事项
+1. 加密的HLS流媒体链接无法播放，播放效果取决于源链接本身
+2. 字幕推荐使用UTF-8编码的srt文件，不容易出现乱码
+3. 遵循Android13权限规范，不再使用旧的存储权限
+
+## 开源说明
+本项目仅用于学习交流，禁止商用。
+播放网络资源请遵守当地版权相关法律法规，请勿播放无版权内容。
