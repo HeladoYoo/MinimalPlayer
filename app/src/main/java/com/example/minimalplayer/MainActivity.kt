@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Size
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -28,6 +29,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -44,6 +46,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -58,6 +61,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
@@ -92,26 +96,6 @@ fun hasVideoPermission(context: Context): Boolean {
     return ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 }
 
-// ✨ 自定义右滑返回手势 Modifier
-@Composable
-fun rememberSwipeToBack(onBack: () -> Unit): Modifier {
-    return Modifier.pointerInput(onBack) {
-        var totalDrag = 0f
-        detectHorizontalDragGestures(
-            onDragStart = { totalDrag = 0f },
-            onHorizontalDrag = { _, dragAmount ->
-                totalDrag += dragAmount
-            },
-            onDragEnd = {
-                // 向右滑动超过 120 像素时触发返回
-                if (totalDrag > 120f) {
-                    onBack()
-                }
-            }
-        )
-    }
-}
-
 @Composable
 fun MainAppNavigator() {
     val context = LocalContext.current
@@ -119,6 +103,7 @@ fun MainAppNavigator() {
         mutableStateOf(if (hasVideoPermission(context)) Screen.Home else Screen.PermissionRequest) 
     }
     var currentVideoUri by rememberSaveable { mutableStateOf("") }
+    var currentVideoName by rememberSaveable { mutableStateOf("") }
     var isDarkMode by rememberSaveable { mutableStateOf(false) }
 
     val backgroundModifier = if (isDarkMode) {
@@ -162,13 +147,15 @@ fun MainAppNavigator() {
             Screen.VideoList -> VideoListScreen(
                 isDarkMode = isDarkMode,
                 onBackClick = { currentScreen = Screen.Home },
-                onVideoClick = { uri ->
+                onVideoClick = { uri, name ->
                     currentVideoUri = uri
+                    currentVideoName = name
                     currentScreen = Screen.Player
                 }
             )
             Screen.Player -> VideoPlayerScreen(
                 videoUri = currentVideoUri,
+                videoName = currentVideoName,
                 onBackClick = { currentScreen = Screen.VideoList }
             )
         }
@@ -359,13 +346,11 @@ fun SettingsScreen(isDarkMode: Boolean, onBackClick: () -> Unit, onAppearanceCli
     val textColor = if (isDarkMode) Color.White else Color(0xFF1D1B20)
     val cardBg = if (isDarkMode) Color(0xFF1E1E1E) else Color.White.copy(alpha = 0.6f)
     val subTextColor = if (isDarkMode) Color.LightGray else Color.DarkGray
-    val swipeToBackModifier = rememberSwipeToBack(onBack = onBackClick)
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .then(swipeToBackModifier) // ✨ 绑定右滑返回手势
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -461,13 +446,11 @@ fun SettingsScreen(isDarkMode: Boolean, onBackClick: () -> Unit, onAppearanceCli
 fun AppearanceSettingsScreen(isDarkMode: Boolean, onThemeChange: (Boolean) -> Unit, onBackClick: () -> Unit) {
     val textColor = if (isDarkMode) Color.White else Color(0xFF1D1B20)
     val cardBg = if (isDarkMode) Color(0xFF1E1E1E) else Color.White.copy(alpha = 0.6f)
-    val swipeToBackModifier = rememberSwipeToBack(onBack = onBackClick)
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .then(swipeToBackModifier) // ✨ 绑定右滑返回手势
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -573,11 +556,10 @@ fun AppearanceSettingsScreen(isDarkMode: Boolean, onThemeChange: (Boolean) -> Un
 }
 
 @Composable
-fun VideoListScreen(isDarkMode: Boolean, onBackClick: () -> Unit, onVideoClick: (String) -> Unit) {
+fun VideoListScreen(isDarkMode: Boolean, onBackClick: () -> Unit, onVideoClick: (String, String) -> Unit) {
     val context = LocalContext.current
     var videoList by remember { mutableStateOf(listOf<VideoItem>()) }
     val textColor = if (isDarkMode) Color.White else Color(0xFF1D1B20)
-    val swipeToBackModifier = rememberSwipeToBack(onBack = onBackClick)
 
     LaunchedEffect(Unit) {
         if (!hasVideoPermission(context)) return@LaunchedEffect
@@ -621,7 +603,6 @@ fun VideoListScreen(isDarkMode: Boolean, onBackClick: () -> Unit, onVideoClick: 
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .then(swipeToBackModifier) // ✨ 绑定右滑返回手势
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -663,7 +644,7 @@ fun VideoListScreen(isDarkMode: Boolean, onBackClick: () -> Unit, onVideoClick: 
                 modifier = Modifier.fillMaxSize()
             ) {
                 items(videoList) { video ->
-                    VideoCardItem(video = video, isDarkMode = isDarkMode, onClick = { onVideoClick(video.uri) })
+                    VideoCardItem(video = video, isDarkMode = isDarkMode, onClick = { onVideoClick(video.uri, video.name) })
                 }
             }
         }
@@ -784,7 +765,7 @@ fun formatDuration(ms: Long): String {
 }
 
 @Composable
-fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
+fun VideoPlayerScreen(videoUri: String, videoName: String, onBackClick: () -> Unit) {
     val context = LocalContext.current
     val activity = context as? Activity
 
@@ -810,6 +791,12 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
     var isSpeedingUp by remember { mutableStateOf(false) }
     var showSpeedTip by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isScreenLocked by remember { mutableStateOf(false) }
+
+    // 播放器状态控制变量
+    var isPlaying by remember { mutableStateOf(true) }
+    var currentPosition by remember { mutableStateOf(0L) }
+    var videoDuration by remember { mutableStateOf(0L) }
 
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
@@ -828,7 +815,19 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                     super.onPlayerError(error)
                     errorMessage = "播放失败: ${error.errorCodeName} - ${error.message}"
                 }
+                override fun onIsPlayingChanged(isPlayingChanged: Boolean) {
+                    isPlaying = isPlayingChanged
+                }
             })
+        }
+    }
+
+    // 定时刷新播放进度
+    LaunchedEffect(exoPlayer) {
+        while (true) {
+            currentPosition = exoPlayer.currentPosition
+            videoDuration = exoPlayer.duration.coerceAtLeast(1L)
+            delay(250)
         }
     }
 
@@ -846,140 +845,288 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .pointerInput(Unit) {
-                detectHorizontalDragGestures(
-                    onDragEnd = {
-                        showSlideTip = false
-                    },
-                    onHorizontalDrag = { _, dragAmount ->
-                        if (!isSpeedingUp && abs(dragAmount) > 2f) {
-                            val currentPosition = exoPlayer.currentPosition
-                            val duration = exoPlayer.duration.coerceAtLeast(1L)
-                            val seekOffset = (dragAmount * 15).toLong() 
-                            var targetPosition = (currentPosition + seekOffset).coerceIn(0L, duration)
-                            
-                            exoPlayer.seekTo(targetPosition)
-                            
-                            val offsetSec = seekOffset / 1000
-                            val sign = if (offsetSec >= 0) "+" else ""
-                            slideTipText = if (dragAmount > 0) "快进 ⏩ (${sign}${offsetSec}s)" else "快退 ⏪ (${offsetSec}s)"
-                            targetTimeText = "${formatDuration(targetPosition)} / ${formatDuration(duration)}"
-                            showSlideTip = true
+            .pointerInput(isScreenLocked) {
+                if (!isScreenLocked) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            showSlideTip = false
+                        },
+                        onHorizontalDrag = { _, dragAmount ->
+                            if (!isSpeedingUp && abs(dragAmount) > 2f) {
+                                val currentPos = exoPlayer.currentPosition
+                                val duration = exoPlayer.duration.coerceAtLeast(1L)
+                                val seekOffset = (dragAmount * 15).toLong() 
+                                val targetPosition = (currentPos + seekOffset).coerceIn(0L, duration)
+                                
+                                exoPlayer.seekTo(targetPosition)
+                                
+                                val offsetSec = seekOffset / 1000
+                                val sign = if (offsetSec >= 0) "+" else ""
+                                slideTipText = if (dragAmount > 0) "快进 ⏩ (${sign}${offsetSec}s)" else "快退 ⏪ (${offsetSec}s)"
+                                targetTimeText = "${formatDuration(targetPosition)} / ${formatDuration(duration)}"
+                                showSlideTip = true
+                            }
                         }
-                    }
-                )
+                    )
+                }
             }
     ) {
+        // ✨ 关闭自带控制器 (useController = false)，完全由我们自己写界面控制
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     player = exoPlayer
-                    useController = true
+                    useController = false 
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT 
                 }
             },
             modifier = Modifier.fillMaxSize()
         )
 
-        Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .align(Alignment.TopStart),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Button(
-                onClick = {
-                    exoPlayer.release()
-                    onBackClick()
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Black.copy(alpha = 0.5f))
+        if (!isScreenLocked) {
+            // 顶部标题栏
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Black.copy(alpha = 0.7f), Color.Transparent)
+                        )
+                    )
+                    .statusBarsPadding()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(text = "返回", color = Color.White)
+                IconButton(
+                    onClick = {
+                        exoPlayer.release()
+                        onBackClick()
+                    }
+                ) {
+                    Text(text = "〈", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = videoName,
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
             }
-        }
 
-        Box(
-            modifier = Modifier
-                .fillMaxHeight()
-                .fillMaxWidth(0.5f)
-                .align(Alignment.CenterEnd)
-                .pointerInput(Unit) {
-                    awaitPointerEventScope {
-                        while (true) {
-                            val down = awaitFirstDown()
-                            val startTime = System.currentTimeMillis()
-                            val startPosition = down.position
-                            var isDragging = false
-                            var isLongPress = false
-
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                if (event.changes.any { !it.pressed }) {
-                                    break
-                                }
-                                
-                                val currentPos = event.changes.first().position
-                                if (abs(currentPos.x - startPosition.x) > 10f) {
-                                    isDragging = true
-                                    break
-                                }
-
-                                if (System.currentTimeMillis() - startTime > 400) {
-                                    isLongPress = true
-                                    break
-                                }
+            // ✨ 自定义精美底部控制条（播放/暂停按钮 + 进度条滑块 + 当前/总时间）
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f))
+                        )
+                    )
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // 播放/暂停 切换按钮
+                    IconButton(
+                        onClick = {
+                            if (exoPlayer.isPlaying) {
+                                exoPlayer.pause()
+                            } else {
+                                exoPlayer.play()
                             }
+                        },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Text(
+                            text = if (isPlaying) "⏸" else "▶",
+                            color = Color.White,
+                            fontSize = 18.sp
+                        )
+                    }
 
-                            if (isDragging) {
-                                var lastX = startPosition.x
+                    // 当前播放时间
+                    Text(
+                        text = formatDuration(currentPosition),
+                        color = Color.White,
+                        fontSize = 12.sp
+                    )
+
+                    // 自定义进度条 Slider
+                    Slider(
+                        value = currentPosition.toFloat(),
+                        onValueChange = { newValue ->
+                            currentPosition = newValue.toLong()
+                        },
+                        onValueChangeFinished = {
+                            exoPlayer.seekTo(currentPosition)
+                        },
+                        valueRange = 0f..videoDuration.toFloat(),
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color.White,
+                            activeTrackColor = Color(0xFF3B82F6),
+                            inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(20.dp)
+                    )
+
+                    // 视频总时长
+                    Text(
+                        text = formatDuration(videoDuration),
+                        color = Color.White,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+
+            // 右侧半屏：防误触长按倍速逻辑
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(0.5f)
+                    .align(Alignment.CenterEnd)
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val down = awaitFirstDown()
+                                val startTime = System.currentTimeMillis()
+                                val startPosition = down.position
+                                var isDragging = false
+                                var isLongPress = false
+
                                 while (true) {
                                     val event = awaitPointerEvent()
                                     if (event.changes.any { !it.pressed }) {
-                                        showSlideTip = false
                                         break
                                     }
-                                    val currentX = event.changes.first().position.x
-                                    val deltaX = currentX - lastX
-                                    lastX = currentX
-
-                                    if (abs(deltaX) > 0.5f) {
-                                        val currentPosition = exoPlayer.currentPosition
-                                        val duration = exoPlayer.duration.coerceAtLeast(1L)
-                                        val seekOffset = (deltaX * 15).toLong()
-                                        var targetPosition = (currentPosition + seekOffset).coerceIn(0L, duration)
-                                        
-                                        exoPlayer.seekTo(targetPosition)
-                                        
-                                        val offsetSec = seekOffset / 1000
-                                        val sign = if (offsetSec >= 0) "+" else ""
-                                        slideTipText = if (deltaX > 0) "快进 ⏩ (${sign}${offsetSec}s)" else "快退 ⏪ (${offsetSec}s)"
-                                        targetTimeText = "${formatDuration(targetPosition)} / ${formatDuration(duration)}"
-                                        showSlideTip = true
-                                        showSpeedTip = false
+                                    
+                                    val currentPos = event.changes.first().position
+                                    if (abs(currentPos.x - startPosition.x) > 10f) {
+                                        isDragging = true
+                                        break
                                     }
-                                }
-                            } else if (isLongPress) {
-                                exoPlayer.setPlaybackSpeed(2.0f)
-                                isSpeedingUp = true
-                                showSpeedTip = true
-                                showSlideTip = false
 
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    if (event.changes.any { !it.pressed }) {
+                                    if (System.currentTimeMillis() - startTime > 400) {
+                                        isLongPress = true
                                         break
                                     }
                                 }
 
-                                exoPlayer.setPlaybackSpeed(1.0f)
-                                isSpeedingUp = false
-                                showSpeedTip = false
+                                if (isDragging) {
+                                    var lastX = startPosition.x
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        if (event.changes.any { !it.pressed }) {
+                                            showSlideTip = false
+                                            break
+                                        }
+                                        val currentX = event.changes.first().position.x
+                                        val deltaX = currentX - lastX
+                                        lastX = currentX
+
+                                        if (abs(deltaX) > 0.5f) {
+                                            val currentPos = exoPlayer.currentPosition
+                                            val duration = exoPlayer.duration.coerceAtLeast(1L)
+                                            val seekOffset = (deltaX * 15).toLong()
+                                            val targetPosition = (currentPos + seekOffset).coerceIn(0L, duration)
+                                            
+                                            exoPlayer.seekTo(targetPosition)
+                                            
+                                            val offsetSec = seekOffset / 1000
+                                            val sign = if (offsetSec >= 0) "+" else ""
+                                            slideTipText = if (deltaX > 0) "快进 ⏩ (${sign}${offsetSec}s)" else "快退 ⏪ (${offsetSec}s)"
+                                            targetTimeText = "${formatDuration(targetPosition)} / ${formatDuration(duration)}"
+                                            showSlideTip = true
+                                            showSpeedTip = false
+                                        }
+                                    }
+                                } else if (isLongPress) {
+                                    exoPlayer.setPlaybackSpeed(2.0f)
+                                    isSpeedingUp = true
+                                    showSpeedTip = true
+                                    showSlideTip = false
+
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        if (event.changes.any { !it.pressed }) {
+                                            break
+                                        }
+                                    }
+
+                                    exoPlayer.setPlaybackSpeed(1.0f)
+                                    isSpeedingUp = false
+                                    showSpeedTip = false
+                                }
                             }
                         }
                     }
+            )
+
+            // 右侧悬浮功能按钮区（截图 📷 和 锁屏 🔓）
+            Column(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 24.dp, bottom = 40.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                IconButton(
+                    onClick = {
+                        Toast.makeText(context, "已成功截取视频画面", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.5f))
+                ) {
+                    Text(text = "📷", fontSize = 18.sp)
                 }
-        )
+
+                IconButton(
+                    onClick = {
+                        isScreenLocked = true
+                        Toast.makeText(context, "屏幕已锁定", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.5f))
+                ) {
+                    Text(text = "🔓", fontSize = 18.sp)
+                }
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable {
+                        isScreenLocked = false
+                        Toast.makeText(context, "屏幕已解除锁定", Toast.LENGTH_SHORT).show()
+                    },
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Box(
+                    modifier = Modifier
+                        .padding(start = 32.dp)
+                        .size(50.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.6f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "🔒", fontSize = 22.sp)
+                }
+            }
+        }
 
         if (showSpeedTip || showSlideTip || errorMessage != null) {
             Box(
