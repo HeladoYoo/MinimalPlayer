@@ -18,10 +18,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -241,7 +240,7 @@ fun VideoListScreen(onBackClick: () -> Unit, onVideoClick: (String) -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(text = "本地视频库", fontSize = 22.sp, color = Color.Black)
+            Text(text = "本地视频库", fontSize = 22.sp, color = Color(0xFF1D1B20))
             Button(
                 onClick = onBackClick,
                 colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.6f))
@@ -264,32 +263,91 @@ fun VideoListScreen(onBackClick: () -> Unit, onVideoClick: (String) -> Unit) {
                 )
             }
         } else {
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            // ✨ 替换为双列网格布局样式
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.fillMaxSize()
             ) {
                 items(videoList) { video ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(Color.White.copy(alpha = 0.45f))
-                            .clickable {
-                                onVideoClick(video.uri)
-                            }
-                            .padding(16.dp)
-                    ) {
-                        Column {
-                            Text(text = video.name, fontSize = 15.sp, color = Color.Black)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "时长: ${video.duration / 1000 / 60} 分钟 | 点击内置播放", 
-                                fontSize = 11.sp, 
-                                color = Color.DarkGray
-                            )
-                        }
-                    }
+                    VideoCardItem(video = video, onClick = { onVideoClick(video.uri) })
                 }
             }
+        }
+    }
+}
+
+// ✨ 双列网格中的单个视频卡片组件
+@Composable
+fun VideoCardItem(video: VideoItem, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color.White.copy(alpha = 0.5f))
+            .border(
+                width = 1.dp,
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.8f),
+                        Color.White.copy(alpha = 0.2f)
+                    )
+                ),
+                shape = RoundedCornerShape(20.dp)
+            )
+            .clickable { onClick() }
+            .padding(12.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            // 模拟视频封面图区域
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(95.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color.Black.copy(alpha = 0.08f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = "▶ 播放", fontSize = 13.sp, color = Color.DarkGray)
+                
+                // 右下角显示视频时长
+                val min = video.duration / 1000 / 60
+                val sec = (video.duration / 1000) % 60
+                val durationText = String.format("%02d:%02d", min, sec)
+                
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(6.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color.Black.copy(alpha = 0.6f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(text = durationText, fontSize = 10.sp, color = Color.White)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // 视频标题（最多显示 2 行）
+            Text(
+                text = video.name,
+                fontSize = 13.sp,
+                color = Color(0xFF1D1B20),
+                maxLines = 2,
+                lineHeight = 18.sp
+            )
+            
+            Spacer(modifier = Modifier.height(6.dp))
+            
+            Text(
+                text = "本地高清视频",
+                fontSize = 11.sp,
+                color = Color.DarkGray
+            )
         }
     }
 }
@@ -423,7 +481,6 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
             }
         }
 
-        // 右侧半屏：完美整合“滑动优先、长按次之”的判定逻辑
         Box(
             modifier = Modifier
                 .fillMaxHeight()
@@ -438,7 +495,6 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                             var isDragging = false
                             var isLongPress = false
 
-                            // 在 400ms 内检测手指是否发生了横向滑动
                             while (true) {
                                 val event = awaitPointerEvent()
                                 if (event.changes.any { !it.pressed }) {
@@ -457,7 +513,6 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                                 }
                             }
 
-                            // 如果是滑动，则执行滑动快进/后退逻辑
                             if (isDragging) {
                                 var lastX = startPosition.x
                                 while (true) {
@@ -486,9 +541,7 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                                         showSpeedTip = false
                                     }
                                 }
-                            } 
-                            // 如果没有滑动且稳稳按住超过 400ms，则触发 2 倍速
-                            else if (isLongPress) {
+                            } else if (isLongPress) {
                                 exoPlayer.setPlaybackSpeed(2.0f)
                                 isSpeedingUp = true
                                 showSpeedTip = true
@@ -510,7 +563,6 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                 }
         )
 
-        // 浮层提示：严格区分倍速提示与滑动时间提示
         if (showSpeedTip || showSlideTip || errorMessage != null) {
             Box(
                 modifier = Modifier
