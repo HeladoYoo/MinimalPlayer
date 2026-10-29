@@ -791,9 +791,10 @@ fun VideoPlayerScreen(videoUri: String, videoName: String, onBackClick: () -> Un
     var isSpeedingUp by remember { mutableStateOf(false) }
     var showSpeedTip by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var isScreenLocked by remember { mutableStateOf(false) }
+    var isScreenLocked by remember { mutableStateOf(false) } // 锁屏状态
+    var showControls by remember { mutableStateOf(true) }     // 控制条显示/隐藏
 
-    // 播放器状态控制变量
+    // 播放状态控制
     var isPlaying by remember { mutableStateOf(true) }
     var currentPosition by remember { mutableStateOf(0L) }
     var videoDuration by remember { mutableStateOf(0L) }
@@ -845,6 +846,7 @@ fun VideoPlayerScreen(videoUri: String, videoName: String, onBackClick: () -> Un
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
+            // 锁屏时禁用水平滑动快进手势
             .pointerInput(isScreenLocked) {
                 if (!isScreenLocked) {
                     detectHorizontalDragGestures(
@@ -870,242 +872,253 @@ fun VideoPlayerScreen(videoUri: String, videoName: String, onBackClick: () -> Un
                     )
                 }
             }
+            // 点击空白处切换控制条显示状态（未锁屏时）
+            .clickable(enabled = !isScreenLocked) {
+                showControls = !showControls
+            }
     ) {
-        // ✨ 关闭自带控制器 (useController = false)，完全由我们自己写界面控制
+        // 自定义视频画面视图，不使用自带控制器
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     player = exoPlayer
-                    useController = false 
+                    useController = false
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT 
                 }
             },
             modifier = Modifier.fillMaxSize()
         )
 
+        // 仅在未锁屏且 showControls 为 true 时显示所有控制界面
         if (!isScreenLocked) {
-            // 顶部标题栏
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Black.copy(alpha = 0.7f), Color.Transparent)
-                        )
-                    )
-                    .statusBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
+            AnimatedVisibility(
+                visible = showControls,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.fillMaxSize()
             ) {
-                IconButton(
-                    onClick = {
-                        exoPlayer.release()
-                        onBackClick()
-                    }
-                ) {
-                    Text(text = "〈", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                }
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = videoName,
-                    color = Color.White,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            // ✨ 自定义精美底部控制条（播放/暂停按钮 + 进度条滑块 + 当前/总时间）
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.BottomCenter)
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f))
-                        )
-                    )
-                    .navigationBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 10.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // 播放/暂停 切换按钮
-                    IconButton(
-                        onClick = {
-                            if (exoPlayer.isPlaying) {
-                                exoPlayer.pause()
-                            } else {
-                                exoPlayer.play()
-                            }
-                        },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Text(
-                            text = if (isPlaying) "⏸" else "▶",
-                            color = Color.White,
-                            fontSize = 18.sp
-                        )
-                    }
-
-                    // 当前播放时间
-                    Text(
-                        text = formatDuration(currentPosition),
-                        color = Color.White,
-                        fontSize = 12.sp
-                    )
-
-                    // 自定义进度条 Slider
-                    Slider(
-                        value = currentPosition.toFloat(),
-                        onValueChange = { newValue ->
-                            currentPosition = newValue.toLong()
-                        },
-                        onValueChangeFinished = {
-                            exoPlayer.seekTo(currentPosition)
-                        },
-                        valueRange = 0f..videoDuration.toFloat(),
-                        colors = SliderDefaults.colors(
-                            thumbColor = Color.White,
-                            activeTrackColor = Color(0xFF3B82F6),
-                            inactiveTrackColor = Color.White.copy(alpha = 0.3f)
-                        ),
+                Box(modifier = Modifier.fillMaxSize()) {
+                    // 1. 顶部标题栏
+                    Row(
                         modifier = Modifier
-                            .weight(1f)
-                            .height(20.dp)
-                    )
+                            .fillMaxWidth()
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(Color.Black.copy(alpha = 0.7f), Color.Transparent)
+                                )
+                            )
+                            .statusBarsPadding()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = {
+                                exoPlayer.release()
+                                onBackClick()
+                            }
+                        ) {
+                            Text(text = "〈", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = videoName,
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
 
-                    // 视频总时长
-                    Text(
-                        text = formatDuration(videoDuration),
-                        color = Color.White,
-                        fontSize = 12.sp
-                    )
-                }
-            }
-
-            // 右侧半屏：防误触长按倍速逻辑
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(0.5f)
-                    .align(Alignment.CenterEnd)
-                    .pointerInput(Unit) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val down = awaitFirstDown()
-                                val startTime = System.currentTimeMillis()
-                                val startPosition = down.position
-                                var isDragging = false
-                                var isLongPress = false
-
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    if (event.changes.any { !it.pressed }) {
-                                        break
+                    // 2. 底部控制条（播放/暂停 + 进度条 + 时间）
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.BottomCenter)
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f))
+                                )
+                            )
+                            .navigationBarsPadding()
+                            .padding(horizontal = 16.dp, vertical = 10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    if (exoPlayer.isPlaying) {
+                                        exoPlayer.pause()
+                                    } else {
+                                        exoPlayer.play()
                                     }
-                                    
-                                    val currentPos = event.changes.first().position
-                                    if (abs(currentPos.x - startPosition.x) > 10f) {
-                                        isDragging = true
-                                        break
-                                    }
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Text(
+                                    text = if (isPlaying) "⏸" else "▶",
+                                    color = Color.White,
+                                    fontSize = 18.sp
+                                )
+                            }
 
-                                    if (System.currentTimeMillis() - startTime > 400) {
-                                        isLongPress = true
-                                        break
-                                    }
-                                }
+                            Text(
+                                text = formatDuration(currentPosition),
+                                color = Color.White,
+                                fontSize = 12.sp
+                            )
 
-                                if (isDragging) {
-                                    var lastX = startPosition.x
+                            Slider(
+                                value = currentPosition.toFloat(),
+                                onValueChange = { newValue ->
+                                    currentPosition = newValue.toLong()
+                                },
+                                onValueChangeFinished = {
+                                    exoPlayer.seekTo(currentPosition)
+                                },
+                                valueRange = 0f..videoDuration.toFloat(),
+                                colors = SliderDefaults.colors(
+                                    thumbColor = Color.White,
+                                    activeTrackColor = Color(0xFF3B82F6),
+                                    inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(20.dp)
+                            )
+
+                            Text(
+                                text = formatDuration(videoDuration),
+                                color = Color.White,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+
+                    // 3. 右侧半屏：长按倍速手势区域
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth(0.5f)
+                            .align(Alignment.CenterEnd)
+                            .pointerInput(Unit) {
+                                awaitPointerEventScope {
                                     while (true) {
-                                        val event = awaitPointerEvent()
-                                        if (event.changes.any { !it.pressed }) {
-                                            showSlideTip = false
-                                            break
-                                        }
-                                        val currentX = event.changes.first().position.x
-                                        val deltaX = currentX - lastX
-                                        lastX = currentX
+                                        val down = awaitFirstDown()
+                                        val startTime = System.currentTimeMillis()
+                                        val startPosition = down.position
+                                        var isDragging = false
+                                        var isLongPress = false
 
-                                        if (abs(deltaX) > 0.5f) {
-                                            val currentPos = exoPlayer.currentPosition
-                                            val duration = exoPlayer.duration.coerceAtLeast(1L)
-                                            val seekOffset = (deltaX * 15).toLong()
-                                            val targetPosition = (currentPos + seekOffset).coerceIn(0L, duration)
+                                        while (true) {
+                                            val event = awaitPointerEvent()
+                                            if (event.changes.any { !it.pressed }) {
+                                                break
+                                            }
                                             
-                                            exoPlayer.seekTo(targetPosition)
-                                            
-                                            val offsetSec = seekOffset / 1000
-                                            val sign = if (offsetSec >= 0) "+" else ""
-                                            slideTipText = if (deltaX > 0) "快进 ⏩ (${sign}${offsetSec}s)" else "快退 ⏪ (${offsetSec}s)"
-                                            targetTimeText = "${formatDuration(targetPosition)} / ${formatDuration(duration)}"
-                                            showSlideTip = true
+                                            val currentPos = event.changes.first().position
+                                            if (abs(currentPos.x - startPosition.x) > 10f) {
+                                                isDragging = true
+                                                break
+                                            }
+
+                                            if (System.currentTimeMillis() - startTime > 400) {
+                                                isLongPress = true
+                                                break
+                                            }
+                                        }
+
+                                        if (isDragging) {
+                                            var lastX = startPosition.x
+                                            while (true) {
+                                                val event = awaitPointerEvent()
+                                                if (event.changes.any { !it.pressed }) {
+                                                    showSlideTip = false
+                                                    break
+                                                }
+                                                val currentX = event.changes.first().position.x
+                                                val deltaX = currentX - lastX
+                                                lastX = currentX
+
+                                                if (abs(deltaX) > 0.5f) {
+                                                    val currentPos = exoPlayer.currentPosition
+                                                    val duration = exoPlayer.duration.coerceAtLeast(1L)
+                                                    val seekOffset = (deltaX * 15).toLong()
+                                                    val targetPosition = (currentPos + seekOffset).coerceIn(0L, duration)
+                                                    
+                                                    exoPlayer.seekTo(targetPosition)
+                                                    
+                                                    val offsetSec = seekOffset / 1000
+                                                    val sign = if (offsetSec >= 0) "+" else ""
+                                                    slideTipText = if (deltaX > 0) "快进 ⏩ (${sign}${offsetSec}s)" else "快退 ⏪ (${offsetSec}s)"
+                                                    targetTimeText = "${formatDuration(targetPosition)} / ${formatDuration(duration)}"
+                                                    showSlideTip = true
+                                                    showSpeedTip = false
+                                                }
+                                            }
+                                        } else if (isLongPress) {
+                                            exoPlayer.setPlaybackSpeed(2.0f)
+                                            isSpeedingUp = true
+                                            showSpeedTip = true
+                                            showSlideTip = false
+
+                                            while (true) {
+                                                val event = awaitPointerEvent()
+                                                if (event.changes.any { !it.pressed }) {
+                                                    break
+                                                }
+                                            }
+
+                                            exoPlayer.setPlaybackSpeed(1.0f)
+                                            isSpeedingUp = false
                                             showSpeedTip = false
                                         }
                                     }
-                                } else if (isLongPress) {
-                                    exoPlayer.setPlaybackSpeed(2.0f)
-                                    isSpeedingUp = true
-                                    showSpeedTip = true
-                                    showSlideTip = false
-
-                                    while (true) {
-                                        val event = awaitPointerEvent()
-                                        if (event.changes.any { !it.pressed }) {
-                                            break
-                                        }
-                                    }
-
-                                    exoPlayer.setPlaybackSpeed(1.0f)
-                                    isSpeedingUp = false
-                                    showSpeedTip = false
                                 }
                             }
+                    )
+
+                    // 4. 右侧悬浮功能按钮（截图 📷 和 锁屏 🔒）
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 24.dp, bottom = 40.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        IconButton(
+                            onClick = {
+                                Toast.makeText(context, "已成功截取视频画面", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.5f))
+                        ) {
+                            Text(text = "📷", fontSize = 18.sp)
+                        }
+
+                        IconButton(
+                            onClick = {
+                                isScreenLocked = true
+                                Toast.makeText(context, "屏幕已锁定，长按与滑动倍速已禁用", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.5f))
+                        ) {
+                            Text(text = "🔓", fontSize = 18.sp)
                         }
                     }
-            )
-
-            // 右侧悬浮功能按钮区（截图 📷 和 锁屏 🔓）
-            Column(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 24.dp, bottom = 40.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                IconButton(
-                    onClick = {
-                        Toast.makeText(context, "已成功截取视频画面", Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.5f))
-                ) {
-                    Text(text = "📷", fontSize = 18.sp)
-                }
-
-                IconButton(
-                    onClick = {
-                        isScreenLocked = true
-                        Toast.makeText(context, "屏幕已锁定", Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.5f))
-                ) {
-                    Text(text = "🔓", fontSize = 18.sp)
                 }
             }
         } else {
+            // 锁屏状态下：隐藏所有控制条和手势，仅在屏幕左侧显示一个极简的解锁图标
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -1128,6 +1141,7 @@ fun VideoPlayerScreen(videoUri: String, videoName: String, onBackClick: () -> Un
             }
         }
 
+        // 提示信息浮窗（倍速、快进提示）
         if (showSpeedTip || showSlideTip || errorMessage != null) {
             Box(
                 modifier = Modifier
