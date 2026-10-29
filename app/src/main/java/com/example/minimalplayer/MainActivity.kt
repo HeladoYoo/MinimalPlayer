@@ -92,6 +92,26 @@ fun hasVideoPermission(context: Context): Boolean {
     return ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 }
 
+// ✨ 自定义右滑返回手势 Modifier
+@Composable
+fun rememberSwipeToBack(onBack: () -> Unit): Modifier {
+    return Modifier.pointerInput(onBack) {
+        var totalDrag = 0f
+        detectHorizontalDragGestures(
+            onDragStart = { totalDrag = 0f },
+            onHorizontalDrag = { _, dragAmount ->
+                totalDrag += dragAmount
+            },
+            onDragEnd = {
+                // 向右滑动超过 120 像素时触发返回
+                if (totalDrag > 120f) {
+                    onBack()
+                }
+            }
+        )
+    }
+}
+
 @Composable
 fun MainAppNavigator() {
     val context = LocalContext.current
@@ -124,7 +144,7 @@ fun MainAppNavigator() {
                 isDarkMode = isDarkMode,
                 onCardClick = { cardTitle ->
                     when (cardTitle) {
-                        "本地视频" -> currentScreen = Screen.VideoList
+                        "本地电影" -> currentScreen = Screen.VideoList
                         "设置中心" -> currentScreen = Screen.Settings
                     }
                 }
@@ -179,7 +199,7 @@ fun PermissionRequestScreen(onGrantedOrSkipped: () -> Unit) {
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "MinimalPlayer",
+                    text = "芙芙播放器",
                     fontSize = 26.sp,
                     color = Color(0xFF1D1B20),
                     fontWeight = FontWeight.Bold
@@ -209,7 +229,7 @@ fun PermissionRequestScreen(onGrantedOrSkipped: () -> Unit) {
                 Spacer(modifier = Modifier.height(12.dp))
 
                 Text(
-                    text = "Android 限制应用访问和管理文件的方式。“文件访问权限”可帮助 MinimalPlayer 查找您手机不同文件夹中的本地视频文件。",
+                    text = "Android 限制应用访问和管理文件的方式。“文件访问权限”可帮助 芙芙播放器 查找您手机不同文件夹中的本地视频文件。",
                     fontSize = 13.sp,
                     color = Color.Gray,
                     textAlign = TextAlign.Center,
@@ -261,7 +281,7 @@ fun ModernHomeScreen(isDarkMode: Boolean, onCardClick: (String) -> Unit) {
             .statusBarsPadding()
     ) {
         Text(
-            text = "MinimalPlayer",
+            text = "芙芙播放器",
             fontSize = 26.sp,
             color = textColor,
             fontWeight = FontWeight.Bold,
@@ -275,11 +295,11 @@ fun ModernHomeScreen(isDarkMode: Boolean, onCardClick: (String) -> Unit) {
         ) {
             item { 
                 GlassCard(
-                    title = "本地电视频", 
+                    title = "本地电影", 
                     subtitle = "4K / 高清专区", 
                     count = "点击进入列表",
                     isDarkMode = isDarkMode,
-                    onClick = { onCardClick("本地视频") }
+                    onClick = { onCardClick("本地电影") }
                 ) 
             }
             item { GlassCard(title = "最近播放", subtitle = "断点续播记录", count = "历史记录", isDarkMode = isDarkMode, onClick = {}) }
@@ -339,11 +359,13 @@ fun SettingsScreen(isDarkMode: Boolean, onBackClick: () -> Unit, onAppearanceCli
     val textColor = if (isDarkMode) Color.White else Color(0xFF1D1B20)
     val cardBg = if (isDarkMode) Color(0xFF1E1E1E) else Color.White.copy(alpha = 0.6f)
     val subTextColor = if (isDarkMode) Color.LightGray else Color.DarkGray
+    val swipeToBackModifier = rememberSwipeToBack(onBack = onBackClick)
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
+            .then(swipeToBackModifier) // ✨ 绑定右滑返回手势
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -427,7 +449,7 @@ fun SettingsScreen(isDarkMode: Boolean, onBackClick: () -> Unit, onAppearanceCli
                 Column {
                     Text(text = "关于 芙芙播放器", fontSize = 16.sp, color = textColor, fontWeight = FontWeight.Medium)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(text = "版本 v1.1.0", fontSize = 12.sp, color = subTextColor)
+                    Text(text = "版本 v1.0", fontSize = 12.sp, color = subTextColor)
                 }
                 Text(text = "›", fontSize = 22.sp, color = subTextColor)
             }
@@ -439,11 +461,13 @@ fun SettingsScreen(isDarkMode: Boolean, onBackClick: () -> Unit, onAppearanceCli
 fun AppearanceSettingsScreen(isDarkMode: Boolean, onThemeChange: (Boolean) -> Unit, onBackClick: () -> Unit) {
     val textColor = if (isDarkMode) Color.White else Color(0xFF1D1B20)
     val cardBg = if (isDarkMode) Color(0xFF1E1E1E) else Color.White.copy(alpha = 0.6f)
+    val swipeToBackModifier = rememberSwipeToBack(onBack = onBackClick)
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
+            .then(swipeToBackModifier) // ✨ 绑定右滑返回手势
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -553,6 +577,7 @@ fun VideoListScreen(isDarkMode: Boolean, onBackClick: () -> Unit, onVideoClick: 
     val context = LocalContext.current
     var videoList by remember { mutableStateOf(listOf<VideoItem>()) }
     val textColor = if (isDarkMode) Color.White else Color(0xFF1D1B20)
+    val swipeToBackModifier = rememberSwipeToBack(onBack = onBackClick)
 
     LaunchedEffect(Unit) {
         if (!hasVideoPermission(context)) return@LaunchedEffect
@@ -596,6 +621,7 @@ fun VideoListScreen(isDarkMode: Boolean, onBackClick: () -> Unit, onVideoClick: 
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
+            .then(swipeToBackModifier) // ✨ 绑定右滑返回手势
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
