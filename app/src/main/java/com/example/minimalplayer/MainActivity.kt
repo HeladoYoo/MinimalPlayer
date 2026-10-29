@@ -9,9 +9,11 @@ import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -26,6 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -33,6 +36,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import kotlin.math.abs
 
 class MainActivity : ComponentActivity() {
 
@@ -280,9 +284,13 @@ fun VideoListScreen(onBackClick: () -> Unit, onVideoClick: (String) -> Unit) {
     }
 }
 
+// 包含全屏沉浸、长按倍速、滑动快进退的高级播放器页面
 @Composable
 fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
     val context = LocalContext.current
+    
+    var currentSpeed by remember { mutableStateOf(1f) }
+    var showSpeedTip by remember { mutableStateOf(false) }
 
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
@@ -299,7 +307,35 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    var slideDirectionText by remember { mutableStateOf("") }
+    var showSlideTip by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        showSlideTip = false
+                    },
+                    onHorizontalDrag = { _, dragAmount ->
+                        if (abs(dragAmount) > 5f) {
+                            val currentPosition = exoPlayer.currentPosition
+                            val seekOffset = (dragAmount * 500).toLong()
+                            var targetPosition = currentPosition + seekOffset
+                            if (targetPosition < 0) targetPosition = 0
+                            if (targetPosition > exoPlayer.duration) targetPosition = exoPlayer.duration
+                            
+                            exoPlayer.seekTo(targetPosition)
+                            
+                            slideDirectionText = if (dragAmount > 0) "快进 ⏩" else "快退 ⏪"
+                            showSlideTip = true
+                        }
+                    }
+                )
+            }
+    ) {
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
@@ -310,17 +346,64 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
             modifier = Modifier.fillMaxSize()
         )
 
-        Button(
-            onClick = {
-                exoPlayer.release()
-                onBackClick()
-            },
+        Row(
             modifier = Modifier
                 .statusBarsPadding()
-                .padding(16.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color.Black.copy(alpha = 0.5f))
+                .padding(16.dp)
+                .align(Alignment.TopStart),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(text = "返回", color = Color.White)
+            Button(
+                onClick = {
+                    exoPlayer.release()
+                    onBackClick()
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Black.copy(alpha = 0.5f))
+            ) {
+                Text(text = "返回", color = Color.White)
+            }
+
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color.White.copy(alpha = 0.3f))
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                if (event.changes.any { it.pressed }) {
+                                    exoPlayer.setPlaybackSpeed(2.0f)
+                                    currentSpeed = 2.0f
+                                    showSpeedTip = true
+                                } else {
+                                    exoPlayer.setPlaybackSpeed(1.0f)
+                                    currentSpeed = 1.0f
+                                    showSpeedTip = false
+                                }
+                            }
+                        }
+                    }
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Text(text = "长按 2X 倍速", color = Color.White, fontSize = 13.sp)
+            }
+        }
+
+        if (showSpeedTip || showSlideTip) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.Black.copy(alpha = 0.7f))
+                    .padding(horizontal = 20.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    text = if (showSpeedTip) "⚡ 正在以 2.0x 倍速播放" else slideDirectionText,
+                    color = Color.White,
+                    fontSize = 16.sp
+                )
+            }
         }
     }
 }
