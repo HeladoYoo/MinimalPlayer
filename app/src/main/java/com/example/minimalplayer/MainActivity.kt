@@ -1,12 +1,14 @@
-package com.example.minimalplayer // 请保留你原本的包名
+package com.example.minimalplayer // 请保留你原本的项目包名
 
 import android.Manifest
-import android.content.Intent
+import android.content.ContentUris
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -27,18 +29,27 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.app.ActivityCompat
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 
 class MainActivity : ComponentActivity() {
+
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ -> }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // 动态申请读取本地视频文件的权限
-        ActivityCompat.requestPermissions(
-            this,
-            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.READ_MEDIA_VIDEO),
-            100
-        )
+        // 动态请求视频读取权限
+        val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            arrayOf(Manifest.permission.READ_MEDIA_VIDEO)
+        } else {
+            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
+        requestPermissionLauncher.launch(permissions)
 
         setContent {
             MinimalPlayerTheme {
@@ -48,16 +59,16 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// 简单的页面导航状态：Home 代表主页，VideoList 代表视频列表页
+// 页面导航状态增加 Player（播放页）
 enum class Screen {
-    Home, VideoList
+    Home, VideoList, Player
 }
 
 @Composable
 fun MainAppNavigator() {
     var currentScreen by remember { mutableStateOf(Screen.Home) }
+    var currentVideoUri by remember { mutableStateOf("") }
 
-    // 弥散渐变背景
     val meshBackgroundBrush = Brush.radialGradient(
         colors = listOf(
             Color(0xFFFFC0CB), // 浅粉色
@@ -76,22 +87,23 @@ fun MainAppNavigator() {
     ) {
         when (currentScreen) {
             Screen.Home -> ModernHomeScreen(
-                onCardClick = { 
-                    // 点击“本地电影”时切换到视频列表页
-                    currentScreen = Screen.VideoList 
-                }
+                onCardClick = { currentScreen = Screen.VideoList }
             )
             Screen.VideoList -> VideoListScreen(
-                onBackClick = { 
-                    // 返回主页
-                    currentScreen = Screen.Home 
+                onBackClick = { currentScreen = Screen.Home },
+                onVideoClick = { uri ->
+                    currentVideoUri = uri
+                    currentScreen = Screen.Player
                 }
+            )
+            Screen.Player -> VideoPlayerScreen(
+                videoUri = currentVideoUri,
+                onBackClick = { currentScreen = Screen.VideoList }
             )
         }
     }
 }
 
-// 现代毛玻璃主界面
 @Composable
 fun ModernHomeScreen(onCardClick: () -> Unit) {
     Column(
@@ -115,8 +127,8 @@ fun ModernHomeScreen(onCardClick: () -> Unit) {
                 GlassCard(
                     title = "本地电影", 
                     subtitle = "4K / 高清专区", 
-                    count = "视频列表",
-                    onClick = onCardClick // 绑定点击事件
+                    count = "点击进入列表",
+                    onClick = onCardClick
                 ) 
             }
             item { GlassCard(title = "最近播放", subtitle = "断点续播记录", count = "历史记录", onClick = {}) }
@@ -126,7 +138,6 @@ fun ModernHomeScreen(onCardClick: () -> Unit) {
     }
 }
 
-// 半透明毛玻璃卡片（支持点击）
 @Composable
 fun GlassCard(title: String, subtitle: String, count: String, onClick: () -> Unit) {
     Box(
@@ -139,117 +150,4 @@ fun GlassCard(title: String, subtitle: String, count: String, onClick: () -> Uni
                 width = 1.dp,
                 brush = Brush.verticalGradient(
                     colors = listOf(
-                        Color.White.copy(alpha = 0.8f),
-                        Color.White.copy(alpha = 0.2f)
-                    )
-                ),
-                shape = RoundedCornerShape(24.dp)
-            )
-            .clickable { onClick() } // 点击响应
-            .padding(16.dp)
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column {
-                Text(text = title, fontSize = 17.sp, color = Color.Black)
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(text = subtitle, fontSize = 11.sp, color = Color.DarkGray)
-            }
-            Text(text = count, fontSize = 11.sp, color = Color.Gray)
-        }
-    }
-}
-
-// 本地视频列表页（读取手机里的视频并展示）
-@Composable
-fun VideoListScreen(onBackClick: () -> Unit) {
-    val context = LocalContext.current
-    var videoList by remember { mutableStateOf(listOf<VideoItem>()) }
-
-    // 扫描手机本地视频
-    LaunchedEffect(Unit) {
-        val list = mutableListOf<VideoItem>()
-        val projection = arrayOf(
-            MediaStore.Video.Media._ID,
-            MediaStore.Video.Media.DISPLAY_NAME,
-            MediaStore.Video.Media.DATA
-        )
-        val cursor = context.contentResolver.query(
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-            projection,
-            null,
-            null,
-            null
-        )
-        cursor?.use {
-            val nameIndex = it.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
-            val pathIndex = it.getColumnIndexOrThrow(MediaStore.Video.Media.DATA)
-            while (it.moveToNext()) {
-                val name = it.getString(nameIndex)
-                val path = it.getString(pathIndex)
-                list.add(VideoItem(name, path))
-            }
-        }
-        videoList = list
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .statusBarsPadding()
-    ) {
-        // 顶部标题与返回按钮
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(text = "本地视频库", fontSize = 22.sp, color = Color.Black)
-            Button(
-                onClick = onBackClick,
-                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.6f))
-            ) {
-                Text(text = "返回", color = Color.Black)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // 视频列表展示
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            items(videoList) { video ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color.White.copy(alpha = 0.45f))
-                        .clickable {
-                            // 点击视频项直接调用系统播放器播放
-                            val intent = Intent(Intent.ACTION_VIEW).apply {
-                                setDataAndType(Uri.parse("file://${video.path}"), "video/*")
-                            }
-                            context.startActivity(intent)
-                        }
-                        .padding(16.dp)
-                ) {
-                    Column {
-                        Text(text = video.name, fontSize = 15.sp, color = Color.Black)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(text = "点击直接播放", fontSize = 11.sp, color = Color.DarkGray)
-                    }
-                }
-            }
-        }
-    }
-}
-
-data class VideoItem(val name: String, val path: String)
-
-@Composable
-fun MinimalPlayerTheme(content: @Composable () -> Unit) {
-    MaterialTheme(content = content)
-}
+              
