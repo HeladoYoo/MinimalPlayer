@@ -99,9 +99,8 @@ fun MainAppNavigator() {
         mutableStateOf(if (hasVideoPermission(context)) Screen.Home else Screen.PermissionRequest) 
     }
     var currentVideoUri by rememberSaveable { mutableStateOf("") }
-    var isDarkMode by rememberSaveable { mutableStateOf(false) } // 全局深色/浅色模式
+    var isDarkMode by rememberSaveable { mutableStateOf(false) }
 
-    // 根据模式调整全局背景颜色
     val backgroundModifier = if (isDarkMode) {
         Modifier.fillMaxSize().background(Color(0xFF121212))
     } else {
@@ -156,7 +155,6 @@ fun MainAppNavigator() {
     }
 }
 
-// 权限请求引导页
 @Composable
 fun PermissionRequestScreen(onGrantedOrSkipped: () -> Unit) {
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -336,7 +334,6 @@ fun GlassCard(title: String, subtitle: String, count: String, isDarkMode: Boolea
     }
 }
 
-// ✨ 设置中心主页面（优化层级与结构）
 @Composable
 fun SettingsScreen(isDarkMode: Boolean, onBackClick: () -> Unit, onAppearanceClick: () -> Unit) {
     val textColor = if (isDarkMode) Color.White else Color(0xFF1D1B20)
@@ -366,7 +363,6 @@ fun SettingsScreen(isDarkMode: Boolean, onBackClick: () -> Unit, onAppearanceCli
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // 设置选项卡片 1：外观设置
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -391,7 +387,6 @@ fun SettingsScreen(isDarkMode: Boolean, onBackClick: () -> Unit, onAppearanceCli
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // 设置选项卡片 2：播放偏好（预留）
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -416,7 +411,6 @@ fun SettingsScreen(isDarkMode: Boolean, onBackClick: () -> Unit, onAppearanceCli
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // 设置选项卡片 3：关于软件
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -441,7 +435,6 @@ fun SettingsScreen(isDarkMode: Boolean, onBackClick: () -> Unit, onAppearanceCli
     }
 }
 
-// ✨ 外观设置子页面（黑白模式选择，层级清晰）
 @Composable
 fun AppearanceSettingsScreen(isDarkMode: Boolean, onThemeChange: (Boolean) -> Unit, onBackClick: () -> Unit) {
     val textColor = if (isDarkMode) Color.White else Color(0xFF1D1B20)
@@ -473,7 +466,6 @@ fun AppearanceSettingsScreen(isDarkMode: Boolean, onThemeChange: (Boolean) -> Un
         Text(text = "选择主题模式", fontSize = 14.sp, color = if (isDarkMode) Color.LightGray else Color.DarkGray)
         Spacer(modifier = Modifier.height(12.dp))
 
-        // 浅色模式选项卡
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -515,7 +507,6 @@ fun AppearanceSettingsScreen(isDarkMode: Boolean, onThemeChange: (Boolean) -> Un
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 深色模式选项卡
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -557,7 +548,6 @@ fun AppearanceSettingsScreen(isDarkMode: Boolean, onThemeChange: (Boolean) -> Un
     }
 }
 
-// 本地视频库页面
 @Composable
 fun VideoListScreen(isDarkMode: Boolean, onBackClick: () -> Unit, onVideoClick: (String) -> Unit) {
     val context = LocalContext.current
@@ -798,4 +788,199 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
             try {
-                
+                val mediaItem = MediaItem.fromUri(Uri.parse(videoUri))
+                setMediaItem(mediaItem)
+                prepare()
+                playWhenReady = true
+            } catch (e: Exception) {
+                e.printStackTrace()
+                errorMessage = "初始化异常: ${e.localizedMessage}"
+            }
+
+            addListener(object : Player.Listener {
+                override fun onPlayerError(error: PlaybackException) {
+                    super.onPlayerError(error)
+                    errorMessage = "播放失败: ${error.errorCodeName} - ${error.message}"
+                }
+            })
+        }
+    }
+
+    DisposableEffect(exoPlayer) {
+        onDispose {
+            exoPlayer.release()
+        }
+    }
+
+    var slideTipText by remember { mutableStateOf("") }
+    var targetTimeText by remember { mutableStateOf("") }
+    var showSlideTip by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        showSlideTip = false
+                    },
+                    onHorizontalDrag = { _, dragAmount ->
+                        if (!isSpeedingUp && abs(dragAmount) > 2f) {
+                            val currentPosition = exoPlayer.currentPosition
+                            val duration = exoPlayer.duration.coerceAtLeast(1L)
+                            val seekOffset = (dragAmount * 15).toLong() 
+                            var targetPosition = (currentPosition + seekOffset).coerceIn(0L, duration)
+                            
+                            exoPlayer.seekTo(targetPosition)
+                            
+                            val offsetSec = seekOffset / 1000
+                            val sign = if (offsetSec >= 0) "+" else ""
+                            slideTipText = if (dragAmount > 0) "快进 ⏩ (${sign}${offsetSec}s)" else "快退 ⏪ (${offsetSec}s)"
+                            targetTimeText = "${formatDuration(targetPosition)} / ${formatDuration(duration)}"
+                            showSlideTip = true
+                        }
+                    }
+                )
+            }
+    ) {
+        AndroidView(
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    player = exoPlayer
+                    useController = true
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT 
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+
+        Row(
+            modifier = Modifier
+                .padding(16.dp)
+                .align(Alignment.TopStart),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Button(
+                onClick = {
+                    exoPlayer.release()
+                    onBackClick()
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Black.copy(alpha = 0.5f))
+            ) {
+                Text(text = "返回", color = Color.White)
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(0.5f)
+                .align(Alignment.CenterEnd)
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val down = awaitFirstDown()
+                            val startTime = System.currentTimeMillis()
+                            val startPosition = down.position
+                            var isDragging = false
+                            var isLongPress = false
+
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                if (event.changes.any { !it.pressed }) {
+                                    break
+                                }
+                                
+                                val currentPos = event.changes.first().position
+                                if (abs(currentPos.x - startPosition.x) > 10f) {
+                                    isDragging = true
+                                    break
+                                }
+
+                                if (System.currentTimeMillis() - startTime > 400) {
+                                    isLongPress = true
+                                    break
+                                }
+                            }
+
+                            if (isDragging) {
+                                var lastX = startPosition.x
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    if (event.changes.any { !it.pressed }) {
+                                        showSlideTip = false
+                                        break
+                                    }
+                                    val currentX = event.changes.first().position.x
+                                    val deltaX = currentX - lastX
+                                    lastX = currentX
+
+                                    if (abs(deltaX) > 0.5f) {
+                                        val currentPosition = exoPlayer.currentPosition
+                                        val duration = exoPlayer.duration.coerceAtLeast(1L)
+                                        val seekOffset = (deltaX * 15).toLong()
+                                        var targetPosition = (currentPosition + seekOffset).coerceIn(0L, duration)
+                                        
+                                        exoPlayer.seekTo(targetPosition)
+                                        
+                                        val offsetSec = seekOffset / 1000
+                                        val sign = if (offsetSec >= 0) "+" else ""
+                                        slideTipText = if (deltaX > 0) "快进 ⏩ (${sign}${offsetSec}s)" else "快退 ⏪ (${offsetSec}s)"
+                                        targetTimeText = "${formatDuration(targetPosition)} / ${formatDuration(duration)}"
+                                        showSlideTip = true
+                                        showSpeedTip = false
+                                    }
+                                }
+                            } else if (isLongPress) {
+                                exoPlayer.setPlaybackSpeed(2.0f)
+                                isSpeedingUp = true
+                                showSpeedTip = true
+                                showSlideTip = false
+
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    if (event.changes.any { !it.pressed }) {
+                                        break
+                                    }
+                                }
+
+                                exoPlayer.setPlaybackSpeed(1.0f)
+                                isSpeedingUp = false
+                                showSpeedTip = false
+                            }
+                        }
+                    }
+                }
+        )
+
+        if (showSpeedTip || showSlideTip || errorMessage != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.Black.copy(alpha = 0.8f))
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = errorMessage ?: if (showSpeedTip) "⚡ 正在以 2.0x 倍速播放" else slideTipText,
+                        color = if (errorMessage != null) Color.Red else Color.White,
+                        fontSize = 15.sp
+                    )
+                    if (showSlideTip && !showSpeedTip && errorMessage == null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = targetTimeText,
+                            color = Color.LightGray,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+data class VideoItem(val name: String, val uri: String, val duration: Long)
