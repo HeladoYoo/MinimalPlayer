@@ -15,6 +15,7 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -32,7 +33,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.awaitFirstDown
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -294,7 +294,6 @@ fun VideoListScreen(onBackClick: () -> Unit, onVideoClick: (String) -> Unit) {
     }
 }
 
-// 格式化毫秒为 mm:ss 或 hh:mm:ss
 fun formatDuration(ms: Long): String {
     if (ms <= 0) return "00:00"
     val totalSeconds = ms / 1000
@@ -313,7 +312,6 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
     val context = LocalContext.current
     val activity = context as? Activity
 
-    // 强制横屏与沉浸式全屏
     DisposableEffect(Unit) {
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         
@@ -396,7 +394,6 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                 )
             }
     ) {
-        // 使用 RESIZE_MODE_FIT，保证视频比例正常并带有黑边
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
@@ -408,7 +405,6 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
             modifier = Modifier.fillMaxSize()
         )
 
-        // 返回按钮
         Row(
             modifier = Modifier
                 .padding(16.dp)
@@ -427,7 +423,6 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
             }
         }
 
-        // 右侧半屏：优化后的长按 2 倍速（需按住 400ms 触发，避免太灵敏误触，且不卡滑动）
         Box(
             modifier = Modifier
                 .fillMaxHeight()
@@ -440,7 +435,6 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                             var isLongPress = false
                             val startTime = System.currentTimeMillis()
                             
-                            // 检查是否持续按住超过 400ms 且未松手
                             var released = false
                             while (!released) {
                                 val event = awaitPointerEvent()
@@ -459,7 +453,6 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                                 isSpeedingUp = true
                                 showSpeedTip = true
                                 
-                                // 等待用户最终松开手指
                                 while (true) {
                                     val event = awaitPointerEvent()
                                     if (event.changes.any { !it.pressed }) {
@@ -476,7 +469,6 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                 }
         )
 
-        // 提示或错误浮层（整合了滑动详细秒数、目标时间与倍速提示）
         if (showSpeedTip || showSlideTip || errorMessage != null) {
             Box(
                 modifier = Modifier
