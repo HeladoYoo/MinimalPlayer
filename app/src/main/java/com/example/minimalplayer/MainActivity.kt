@@ -39,6 +39,8 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
@@ -290,13 +292,12 @@ fun VideoListScreen(onBackClick: () -> Unit, onVideoClick: (String) -> Unit) {
     }
 }
 
-// 完美沉浸式横屏全屏播放页面
 @Composable
 fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
     val context = LocalContext.current
     val activity = context as? Activity
 
-    // 1. 进入播放页时：强制切换为横屏，并隐藏系统状态栏与导航栏实现全屏沉浸
+    // 1. 强制横屏与沉浸式全屏
     DisposableEffect(Unit) {
         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         
@@ -308,7 +309,6 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
         }
 
         onDispose {
-            // 2. 离开播放页时：恢复竖屏，并显示系统栏
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             if (window != null) {
                 val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
@@ -319,13 +319,27 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
 
     var isSpeedingUp by remember { mutableStateOf(false) }
     var showSpeedTip by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) } // 用于捕获并显示播放错误
 
+    // 2. 初始化 ExoPlayer 并加入错误监听
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
-            val mediaItem = MediaItem.fromUri(Uri.parse(videoUri))
-            setMediaItem(mediaItem)
-            prepare()
-            playWhenReady = true
+            try {
+                val mediaItem = MediaItem.fromUri(Uri.parse(videoUri))
+                setMediaItem(mediaItem)
+                prepare()
+                playWhenReady = true
+            } catch (e: Exception) {
+                e.printStackTrace()
+                errorMessage = "初始化异常: ${e.localizedMessage}"
+            }
+
+            addListener(object : Player.Listener {
+                override fun onPlayerError(error: PlaybackException) {
+                    super.onPlayerError(error)
+                    errorMessage = "播放失败: ${error.errorCodeName} - ${error.message}"
+                }
+            })
         }
     }
 
@@ -364,7 +378,7 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                 )
             }
     ) {
-        // 视频视图，填满全屏
+        // 视频渲染视图
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
@@ -395,7 +409,7 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
             }
         }
 
-        // 右侧半屏长按 2 倍速
+        // 右侧半屏长按 2 倍速触发层
         Box(
             modifier = Modifier
                 .fillMaxHeight()
@@ -421,19 +435,19 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                 }
         )
 
-        // 提示浮层
-        if (showSpeedTip || showSlideTip) {
+        // 提示或错误浮层
+        if (showSpeedTip || showSlideTip || errorMessage != null) {
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color.Black.copy(alpha = 0.7f))
-                    .padding(horizontal = 20.dp, vertical = 10.dp)
+                    .background(Color.Black.copy(alpha = 0.8f))
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
             ) {
                 Text(
-                    text = if (showSpeedTip) "⚡ 正在以 2.0x 倍速播放" else slideDirectionText,
-                    color = Color.White,
-                    fontSize = 16.sp
+                    text = errorMessage ?: if (showSpeedTip) "⚡ 正在以 2.0x 倍速播放" else slideDirectionText,
+                    color = if (errorMessage != null) Color.Red else Color.White,
+                    fontSize = 15.sp
                 )
             }
         }
