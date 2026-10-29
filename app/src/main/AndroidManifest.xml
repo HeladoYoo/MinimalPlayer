@@ -6,7 +6,7 @@
 
     <application
         android:allowBackup="true"
-        android:label="MinimalPlayer"
+        android:label="芙芙播放器"
         android:supportsRtl="true">
 
         <activity
