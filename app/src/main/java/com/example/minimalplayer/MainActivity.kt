@@ -4,14 +4,18 @@ import android.Manifest
 import android.app.Activity
 import android.content.ContentUris
 import android.content.pm.ActivityInfo
+import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.util.Size
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -30,8 +34,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,6 +51,8 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
 class MainActivity : ComponentActivity() {
@@ -263,7 +271,6 @@ fun VideoListScreen(onBackClick: () -> Unit, onVideoClick: (String) -> Unit) {
                 )
             }
         } else {
-            // ✨ 替换为双列网格布局样式
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -278,9 +285,33 @@ fun VideoListScreen(onBackClick: () -> Unit, onVideoClick: (String) -> Unit) {
     }
 }
 
-// ✨ 双列网格中的单个视频卡片组件
+// ✨ 带有异步加载真实视频帧封面的网格卡片
 @Composable
 fun VideoCardItem(video: VideoItem, onClick: () -> Unit) {
+    val context = LocalContext.current
+    var thumbnailBitmap by remember { mutableStateOf<Bitmap?>(null) }
+
+    // 在后台异步提取视频帧，避免卡顿
+    LaunchedEffect(video.uri) {
+        withContext(Dispatchers.IO) {
+            try {
+                val uri = Uri.parse(video.uri)
+                val bm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    context.contentResolver.loadThumbnail(uri, Size(320, 180), null)
+                } else {
+                    val retriever = MediaMetadataRetriever()
+                    retriever.setDataSource(context, uri)
+                    val b = retriever.getFrameAtTime(1000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    retriever.release()
+                    b
+                }
+                thumbnailBitmap = bm
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -302,22 +333,31 @@ fun VideoCardItem(video: VideoItem, onClick: () -> Unit) {
         Column(
             modifier = Modifier.fillMaxWidth()
         ) {
-            // 模拟视频封面图区域
+            // 封面图区域
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(95.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(Color.Black.copy(alpha = 0.08f)),
+                    .background(Color.Black.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = "▶ 播放", fontSize = 13.sp, color = Color.DarkGray)
-                
+                if (thumbnailBitmap != null) {
+                    Image(
+                        bitmap = thumbnailBitmap!!.asImageBitmap(),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Text(text = "加载中...", fontSize = 11.sp, color = Color.Gray)
+                }
+
                 // 右下角显示视频时长
                 val min = video.duration / 1000 / 60
                 val sec = (video.duration / 1000) % 60
                 val durationText = String.format("%02d:%02d", min, sec)
-                
+
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -332,7 +372,7 @@ fun VideoCardItem(video: VideoItem, onClick: () -> Unit) {
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // 视频标题（最多显示 2 行）
+            // 视频标题
             Text(
                 text = video.name,
                 fontSize = 13.sp,
