@@ -55,7 +55,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        supportActionBar?.hide() // 隐藏默认标题栏
         
         val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             arrayOf(Manifest.permission.READ_MEDIA_VIDEO)
@@ -356,7 +355,7 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black) // 背景设为纯黑，保证黑边质感
+            .background(Color.Black) // 纯黑背景，确保自适应黑边质感
             .pointerInput(Unit) {
                 detectHorizontalDragGestures(
                     onDragEnd = {
@@ -379,7 +378,7 @@ fun VideoPlayerScreen(videoUri: String, onBackClick: () -> Unit) {
                 )
             }
     ) {
-        // 核心修改：将 RESIZE_MODE_ZOOM 改为 RESIZE_MODE_FIT，自动添加黑边
+        // 使用 RESIZE_MODE_FIT，保证视频比例正常并带有沉浸式黑边
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
