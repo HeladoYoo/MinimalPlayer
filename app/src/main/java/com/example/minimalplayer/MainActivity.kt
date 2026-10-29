@@ -124,7 +124,7 @@ fun MainAppNavigator() {
                 isDarkMode = isDarkMode,
                 onCardClick = { cardTitle ->
                     when (cardTitle) {
-                        "本地电影" -> currentScreen = Screen.VideoList
+                        "本地视频" -> currentScreen = Screen.VideoList
                         "设置中心" -> currentScreen = Screen.Settings
                     }
                 }
@@ -275,11 +275,11 @@ fun ModernHomeScreen(isDarkMode: Boolean, onCardClick: (String) -> Unit) {
         ) {
             item { 
                 GlassCard(
-                    title = "本地电影", 
+                    title = "本地电视频", 
                     subtitle = "4K / 高清专区", 
                     count = "点击进入列表",
                     isDarkMode = isDarkMode,
-                    onClick = { onCardClick("本地电影") }
+                    onClick = { onCardClick("本地视频") }
                 ) 
             }
             item { GlassCard(title = "最近播放", subtitle = "断点续播记录", count = "历史记录", isDarkMode = isDarkMode, onClick = {}) }
@@ -425,7 +425,7 @@ fun SettingsScreen(isDarkMode: Boolean, onBackClick: () -> Unit, onAppearanceCli
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text(text = "关于 MinimalPlayer", fontSize = 16.sp, color = textColor, fontWeight = FontWeight.Medium)
+                    Text(text = "关于 芙芙播放器", fontSize = 16.sp, color = textColor, fontWeight = FontWeight.Medium)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(text = "版本 v1.1.0", fontSize = 12.sp, color = subTextColor)
                 }
